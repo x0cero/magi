@@ -5,7 +5,7 @@ Thanks for wanting to contribute. Here's how to get started.
 ## Setup
 
 ```bash
-git clone https://github.com/0arch-io/magi
+git clone https://github.com/x0cero/magi
 cd magi
 pip install -e ".[dev]"
 ```
@@ -40,7 +40,7 @@ These are non-negotiable. Read them before opening a PR.
 
 ## What to work on
 
-Check the [issues](https://github.com/0arch-io/magi/issues) for open items. Good first contributions:
+Check the [issues](https://github.com/x0cero/magi/issues) for open items. Good first contributions:
 
 - New specialist lenses (follow the pattern in `personas.py`)
 - Intake classifier improvements (better edge case handling)
