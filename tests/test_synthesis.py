@@ -9,12 +9,31 @@ from magi.core import (
 )
 
 
+def vote(verdict, reasoning, finding="a specific lens finding", confidence=3, condition=""):
+    return PersonaResponse(
+        verdict=verdict,
+        reasoning=reasoning,
+        lens_finding=finding,
+        confidence=confidence,
+        condition=condition,
+    )
+
+
+def pick(option, reasoning, finding="a specific lens finding", confidence=3):
+    return ChoiceResponse(
+        chosen_option=option,
+        reasoning=reasoning,
+        lens_finding=finding,
+        confidence=confidence,
+    )
+
+
 class TestSynthesizeDecision:
     def test_consensus_accept(self):
         positions = {
-            "MELCHIOR": PersonaResponse(verdict=Verdict.ACCEPT, reasoning="The data supports this move clearly."),
-            "BALTHASAR": PersonaResponse(verdict=Verdict.ACCEPT, reasoning="Long-term this is sustainable and healthy."),
-            "CASPER": PersonaResponse(verdict=Verdict.ACCEPT, reasoning="This aligns with what they actually want."),
+            "MELCHIOR": vote(Verdict.ACCEPT, "The data supports this move clearly."),
+            "BALTHASAR": vote(Verdict.ACCEPT, "Long-term this is sustainable and healthy."),
+            "CASPER": vote(Verdict.ACCEPT, "This aligns with what they actually want."),
         }
         result = synthesize(positions, outcome="consensus")
         assert "CONSENSUS" in result
@@ -23,66 +42,85 @@ class TestSynthesizeDecision:
 
     def test_consensus_reject(self):
         positions = {
-            "MELCHIOR": PersonaResponse(verdict=Verdict.REJECT, reasoning="The numbers do not add up at all."),
-            "BALTHASAR": PersonaResponse(verdict=Verdict.REJECT, reasoning="This would damage key relationships irreparably."),
-            "CASPER": PersonaResponse(verdict=Verdict.REJECT, reasoning="They do not actually want this outcome."),
+            "MELCHIOR": vote(Verdict.REJECT, "The numbers do not add up at all."),
+            "BALTHASAR": vote(Verdict.REJECT, "This would damage key relationships irreparably."),
+            "CASPER": vote(Verdict.REJECT, "They do not actually want this outcome."),
         }
         result = synthesize(positions, outcome="consensus")
         assert "CONSENSUS" in result
         assert "NO" in result
 
-    def test_deadlock_leans_yes(self):
+    def test_two_one_is_a_decision_not_a_deadlock(self):
+        """A 2-1 vote is the council deciding. Reporting it as a hung jury was
+        the system-level version of refusing to vote."""
         positions = {
-            "MELCHIOR": PersonaResponse(verdict=Verdict.ACCEPT, reasoning="Strong data case for proceeding now."),
-            "BALTHASAR": PersonaResponse(verdict=Verdict.ACCEPT, reasoning="Sustainable path with good upside."),
-            "CASPER": PersonaResponse(verdict=Verdict.CONDITIONAL, reasoning="Close call but one blocker remains.", condition="Only if they negotiate the equity split first"),
+            "MELCHIOR": vote(Verdict.ACCEPT, "Strong data case for proceeding now."),
+            "BALTHASAR": vote(Verdict.ACCEPT, "Sustainable path with good upside."),
+            "CASPER": vote(Verdict.CONDITIONAL, "Close call but one blocker remains.",
+                           condition="Only if they negotiate the equity split first"),
         }
-        result = synthesize(positions, outcome="deadlock")
-        assert "DEADLOCK" in result
-        assert "leans YES" in result
+        result = synthesize(positions, outcome="auto")
+        assert "MAJORITY" in result
+        assert "YES" in result
+        assert "DEADLOCK" not in result
+        assert "your call" not in result
 
-    def test_deadlock_split(self):
+    def test_three_way_split_resolves_on_conviction(self):
         positions = {
-            "MELCHIOR": PersonaResponse(verdict=Verdict.ACCEPT, reasoning="Data says go for it now."),
-            "BALTHASAR": PersonaResponse(verdict=Verdict.REJECT, reasoning="Too risky for their current life stage."),
-            "CASPER": PersonaResponse(verdict=Verdict.CONDITIONAL, reasoning="The timing is everything here, and September is the hard cutoff.", condition="Only if they start before September 2026"),
+            "MELCHIOR": vote(Verdict.ACCEPT, "Data says go for it now.", confidence=5),
+            "BALTHASAR": vote(Verdict.REJECT, "Too risky for their current life stage.", confidence=2),
+            "CASPER": vote(Verdict.CONDITIONAL, "The timing is everything, September is the cutoff.",
+                           confidence=2, condition="Only if they start before September 2026"),
         }
-        result = synthesize(positions, outcome="deadlock")
-        assert "DEADLOCK" in result
-        assert "split" in result
-        assert "your call" in result
+        result = synthesize(positions, outcome="auto")
+        assert "CALL" in result
+        assert "YES" in result
+        assert "conviction" in result
+        assert "your call" not in result
+
+    def test_dead_even_goes_to_the_desire_lens(self):
+        positions = {
+            "MELCHIOR": vote(Verdict.REJECT, "The runway math does not clear.", confidence=3),
+            "BALTHASAR": vote(Verdict.CONDITIONAL, "One irreversible cost sits in the way.",
+                              confidence=3, condition="Only if their lease ends before the move"),
+            "CASPER": vote(Verdict.ACCEPT, "They already decided, they want permission.", confidence=3),
+        }
+        result = synthesize(positions, outcome="auto")
+        assert "CALL" in result
+        assert "YES" in result  # CASPER's ACCEPT breaks the tie
+        assert "your call" not in result
 
     def test_incomplete(self):
-        positions = {
-            "MELCHIOR": PersonaResponse(verdict=Verdict.ACCEPT, reasoning="The evidence is clear on this one."),
-        }
+        positions = {"MELCHIOR": vote(Verdict.ACCEPT, "The evidence is clear on this one.")}
         result = synthesize(positions, outcome="incomplete")
         assert "INCOMPLETE" in result
 
     def test_auto_detection_consensus(self):
         positions = {
-            "MELCHIOR": PersonaResponse(verdict=Verdict.REJECT, reasoning="Terrible risk-reward ratio here."),
-            "BALTHASAR": PersonaResponse(verdict=Verdict.REJECT, reasoning="Would cause lasting damage to wellbeing."),
+            "MELCHIOR": vote(Verdict.REJECT, "Terrible risk-reward ratio here."),
+            "BALTHASAR": vote(Verdict.REJECT, "Would cause lasting damage to wellbeing."),
         }
         result = synthesize(positions, outcome="auto")
         assert "CONSENSUS" in result
         assert "NO" in result
 
-    def test_auto_detection_deadlock(self):
+    def test_legacy_deadlock_outcome_still_resolves(self):
+        """Journal entries written before 0.13 carry outcome='deadlock'."""
         positions = {
-            "MELCHIOR": PersonaResponse(verdict=Verdict.ACCEPT, reasoning="Numbers check out for this move."),
-            "BALTHASAR": PersonaResponse(verdict=Verdict.REJECT, reasoning="Cost to relationships is too high."),
+            "MELCHIOR": vote(Verdict.ACCEPT, "Numbers check out for this move.", confidence=4),
+            "BALTHASAR": vote(Verdict.REJECT, "Cost to relationships is too high.", confidence=2),
         }
-        result = synthesize(positions, outcome="auto")
-        assert "DEADLOCK" in result
+        result = synthesize(positions, outcome="deadlock")
+        assert "DEADLOCK" not in result
+        assert "YES" in result
 
 
 class TestSynthesizeChoice:
     def test_consensus(self):
         positions = {
-            "MELCHIOR": ChoiceResponse(chosen_option="Swift", reasoning="Native performance is non-negotiable for this app."),
-            "BALTHASAR": ChoiceResponse(chosen_option="Swift", reasoning="Better long-term investment for iOS career."),
-            "CASPER": ChoiceResponse(chosen_option="Swift", reasoning="They genuinely want to learn Swift anyway."),
+            "MELCHIOR": pick("Swift", "Native performance is non-negotiable for this app."),
+            "BALTHASAR": pick("Swift", "Better long-term investment for iOS career."),
+            "CASPER": pick("Swift", "They genuinely want to learn Swift anyway."),
         }
         result = synthesize_choice(positions, "consensus", ["Swift", "React Native"])
         assert "CONSENSUS" in result
@@ -90,22 +128,32 @@ class TestSynthesizeChoice:
 
     def test_winner(self):
         positions = {
-            "MELCHIOR": ChoiceResponse(chosen_option="Swift", reasoning="Performance edge matters here."),
-            "BALTHASAR": ChoiceResponse(chosen_option="Swift", reasoning="Deeper ecosystem for what they need."),
-            "CASPER": ChoiceResponse(chosen_option="React Native", reasoning="They value shipping fast over polish."),
+            "MELCHIOR": pick("Swift", "Performance edge matters here."),
+            "BALTHASAR": pick("Swift", "Deeper ecosystem for what they need."),
+            "CASPER": pick("React Native", "They value shipping fast over polish."),
         }
-        result = synthesize_choice(positions, "split", ["Swift", "React Native"])
+        result = synthesize_choice(positions, "auto", ["Swift", "React Native"])
         assert "WINNER" in result
         assert "Swift" in result
 
-    def test_tie(self):
+    def test_tie_is_broken_by_conviction(self):
         positions = {
-            "MELCHIOR": ChoiceResponse(chosen_option="Miami", reasoning="Lower taxes, better for the business long-term."),
-            "BALTHASAR": ChoiceResponse(chosen_option="Austin", reasoning="Stronger support network in Austin."),
+            "MELCHIOR": pick("Miami", "Lower taxes, better for the business long-term.", confidence=5),
+            "BALTHASAR": pick("Austin", "Stronger support network in Austin.", confidence=2),
         }
-        result = synthesize_choice(positions, "split", ["Miami", "Austin"])
-        assert "TIE" in result
-        assert "your call" in result
+        result = synthesize_choice(positions, "auto", ["Miami", "Austin"])
+        assert "Miami" in result
+        assert "your call" not in result
+        assert "TIE" not in result
+
+    def test_tie_on_conviction_goes_to_desire_lens(self):
+        positions = {
+            "MELCHIOR": pick("Miami", "Lower taxes, better for the business long-term.", confidence=3),
+            "CASPER": pick("Austin", "Austin is the life they keep describing.", confidence=3),
+        }
+        result = synthesize_choice(positions, "auto", ["Miami", "Austin"])
+        assert "Austin" in result
+        assert "your call" not in result
 
 
 class TestSynthesizeRecommend:

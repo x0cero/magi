@@ -8,8 +8,19 @@ from rich.text import Text
 
 from magi.config import CONFIG_PATH, OLLAMA_HOST, load_config
 from magi.core import DEFAULT_MODELS
+from magi.providers import _KEY_ENV_VARS, get_api_key, is_local, parse_model_spec
 
 REQUIRED_MODELS = list(DEFAULT_MODELS.values())
+
+
+def _effective_models() -> dict[str, str]:
+    """Core roster after config.toml overrides."""
+    models = dict(DEFAULT_MODELS)
+    cfg_models = load_config().get("models", {})
+    for name in ("melchior", "balthasar", "casper"):
+        if cfg_models.get(name):
+            models[name.upper()] = cfg_models[name]
+    return models
 
 
 async def _check_ollama() -> tuple[bool, str]:
@@ -50,11 +61,18 @@ async def run_doctor() -> int:
     console = Console()
     issues = 0
 
+    effective = _effective_models()
+    local_models = sorted({m for m in effective.values() if is_local(m)})
+    cloud_models = sorted({m for m in effective.values() if not is_local(m)})
+
     ok, version = await _check_ollama()
     text = Text()
     if ok:
         text.append("  OK  ", style="bold green")
         text.append(f"Ollama {version} at {OLLAMA_HOST}\n")
+    elif not local_models:
+        text.append("  --  ", style="dim")
+        text.append(f"Ollama not reachable at {OLLAMA_HOST} (not needed — all council models are cloud)\n", style="dim")
     else:
         text.append("  !!  ", style="bold red")
         text.append(f"Ollama not reachable at {OLLAMA_HOST}\n", style="red")
@@ -64,15 +82,32 @@ async def run_doctor() -> int:
 
     console.print(Panel(text, title="[bold]Ollama[/bold]", border_style="dim"))
 
+    if cloud_models:
+        prov_text = Text()
+        for spec in cloud_models:
+            provider, _ = parse_model_spec(spec)
+            if get_api_key(provider):
+                prov_text.append("  OK  ", style="bold green")
+                prov_text.append(f"{spec:<40}  key found\n")
+            else:
+                prov_text.append("  !!  ", style="bold red")
+                prov_text.append(f"{spec:<40}  ", style="red")
+                prov_text.append(f"missing key — set {_KEY_ENV_VARS[provider]}\n", style="dim")
+                issues += 1
+        console.print(Panel(prov_text, title="[bold]Cloud Providers[/bold]", border_style="dim"))
+
     if not ok:
-        console.print(f"\n[red bold]{issues} issue(s) found[/red bold]")
-        return 1
+        if issues:
+            console.print(f"\n[red bold]{issues} issue(s) found[/red bold]")
+            return 1
+        console.print("\n[green bold]all checks passed[/green bold]")
+        return 0
 
     pulled = await _list_pulled_models()
     model_text = Text()
     total_size = 0
 
-    unique_models = sorted(set(DEFAULT_MODELS.values()))
+    unique_models = local_models
     for model in unique_models:
         if model in pulled:
             size = pulled[model].get("size", 0)
@@ -100,7 +135,8 @@ async def run_doctor() -> int:
     if total_size > 0:
         model_text.append(f"\n  total footprint: {_format_size(total_size)}\n", style="dim")
 
-    console.print(Panel(model_text, title="[bold]Required Models[/bold]", border_style="dim"))
+    if unique_models:
+        console.print(Panel(model_text, title="[bold]Required Models[/bold]", border_style="dim"))
 
     cfg_text = Text()
     if CONFIG_PATH.exists():

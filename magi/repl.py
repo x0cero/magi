@@ -23,7 +23,7 @@ from magi.core import (
     synthesize_choice,
     synthesize_recommend,
 )
-from magi.intake import QuestionClass, classify_safe
+from magi.intake import Classification, QuestionClass, classify_safe
 from magi.memory import build_context, detect_patterns, search
 from magi.personas import (
     PERSONAS,
@@ -276,21 +276,35 @@ async def run_full_deliberation(
         return
     question = user_msgs[-1]
 
-    classification = await classify_safe(question)
-
-    if classification.question_class == QuestionClass.NOISE:
-        # Roll back the polluting user message so the next real question doesn't
-        # see "hello" sitting in every persona's history.
-        for hist in deliberation.histories.values():
-            if hist and hist[-1]["role"] == "user":
-                hist.pop()
-        console.print(
-            "[dim italic]the council convenes for questions, not greetings — "
-            "try \"should I X?\" or \"A or B?\"[/dim italic]"
+    # A follow-up is evidence for a thread that is already running. Sending it
+    # back through intake bounced "i have a tested rollback and the team is on
+    # call through the weekend" as noise, which killed the whole point of
+    # arguing back. Follow-ups inherit the thread's mode and skip the
+    # classifier entirely, which is also a second or two faster.
+    is_followup = deliberation.turn > 1 and deliberation.mode is not None
+    if is_followup:
+        classification = Classification(
+            question_class=QuestionClass(deliberation.mode),
+            options=list(deliberation.options),
         )
-        return
+    else:
+        classification = await classify_safe(question)
 
-    render_intake(classification.question_class.value, classification.options, console)
+        if classification.question_class == QuestionClass.NOISE:
+            # Roll back the polluting user message so the next real question
+            # doesn't see "hello" sitting in every persona's history.
+            for hist in deliberation.histories.values():
+                if hist and hist[-1]["role"] == "user":
+                    hist.pop()
+            console.print(
+                "[dim italic]the council convenes for questions, not greetings — "
+                "try \"should I X?\" or \"A or B?\"[/dim italic]"
+            )
+            return
+
+        deliberation.mode = classification.question_class.value
+        deliberation.options = list(classification.options)
+        render_intake(classification.question_class.value, classification.options, console)
 
     hits = search(question)
     if hits:
@@ -381,6 +395,15 @@ async def _run_decision_flow(
                     vote_statuses[name] = f"failed: {type(payload).__name__}"
                 else:
                     vote_statuses[name] = f"{payload.verdict.value}  [{models[name]}]"
+                if live is not None:
+                    live.update(vote_status_panel(vote_statuses, initial_votes))
+
+            elif kind == "revote":
+                # This member restated somebody else's argument and was sent
+                # back to find the one only their lens produces.
+                _, name, payload = event
+                initial_votes[name] = payload
+                vote_statuses[name] = f"{payload.verdict.value}  ↻ own lens  [{models[name]}]"
                 if live is not None:
                     live.update(vote_status_panel(vote_statuses, initial_votes))
 
@@ -501,6 +524,14 @@ async def _run_choice_flow(
                     vote_statuses[name] = f"failed: {type(payload).__name__}"
                 else:
                     vote_statuses[name] = f"{payload.chosen_option}  [{models[name]}]"
+                if live is not None:
+                    live.update(choice_vote_status_panel(vote_statuses, initial_votes))
+
+            elif kind == "revote":
+                # Sent back for restating another member's reasoning.
+                _, name, payload = event
+                initial_votes[name] = payload
+                vote_statuses[name] = f"{payload.chosen_option}  ↻ own lens  [{models[name]}]"
                 if live is not None:
                     live.update(choice_vote_status_panel(vote_statuses, initial_votes))
 

@@ -10,3 +10,9 @@ build/
 node_modules/
 .pytest_cache/
 .ruff_cache/
+.venv-dev/
+
+# eval run outputs: data, not source. Keep the harness, drop the results.
+evals/runs/*.json
+evals/runs/*.log
+!evals/runs/baseline-v0.12.json

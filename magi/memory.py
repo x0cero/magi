@@ -72,17 +72,35 @@ def _sanitize_context_field(text: str) -> str:
 
 
 def build_context(hits: list[MemoryHit]) -> str:
-    if not hits:
+    """What the council is allowed to remember.
+
+    A past verdict is NOT shown unless the user came back and said what
+    actually happened. Feeding the council its own previous opinion creates a
+    loop: it voted yes once, reads that as precedent, and votes yes again with
+    more confidence. Seen live — MELCHIOR turned two prior verdicts on the same
+    question into "a 100% success rate in prior deployments", which is a fact
+    about nothing. Only a recorded outcome is evidence about the world.
+    """
+    # Only what the user came back and told us. Everything else is the council
+    # reading its own notes. Saying "they never recorded what they did" was
+    # itself enough to poison a deliberation: MELCHIOR read that line and voted
+    # REJECT on a database migration because it showed "a pattern of unrecorded
+    # actions, which creates a high risk of failure". The user's journalling
+    # habits are not evidence about anything they asked.
+    evidence = [h for h in hits if h.user_outcome]
+    if not evidence:
         return ""
-    lines = ["[COUNCIL MEMORY — the user has asked similar questions before]"]
-    for h in hits:
+
+    lines = ["[COUNCIL MEMORY — what this user did after similar questions]"]
+    for h in evidence:
         q = _sanitize_context_field(h.question)
-        s = _sanitize_context_field(h.synthesis)
-        line = f"- {h.timestamp}: \"{q}\" → {s}"
-        if h.user_outcome:
-            o = _sanitize_context_field(h.user_outcome)
-            line += f" | user later said: \"{o}\""
-        lines.append(line)
+        o = _sanitize_context_field(h.user_outcome)
+        lines.append(f"- {h.timestamp}: they asked \"{q}\" and afterwards: \"{o}\"")
+    lines.append(
+        "These are things that actually happened, and only those. Nothing here "
+        "says whether the council was right, and nothing here is a precedent or "
+        "a success rate."
+    )
     lines.append("")
     lines.append("[CURRENT QUESTION]")
     return "\n".join(lines)
@@ -106,9 +124,12 @@ def detect_patterns(question: str, entries: list[dict] | None = None) -> Pattern
     outcomes_recorded = sum(1 for e in entries if e.get("user_outcome"))
     repeat = any(_similarity(question, e.get("question", "")) >= 0.4 for e in entries)
 
+    # A run of questions the council could only settle on conviction or a
+    # tiebreak is still worth surfacing — those are the ones you keep bringing
+    # back. ("deadlock"/"split" are pre-0.13 entries.)
     deadlock_streak = 0
     for e in entries:
-        if e.get("outcome") in ("deadlock", "split"):
+        if e.get("outcome") in ("deadlock", "split", "conviction", "tiebreak"):
             deadlock_streak += 1
         else:
             break

@@ -6,7 +6,7 @@ from enum import Enum
 import httpx
 from pydantic import BaseModel, Field
 
-from magi.config import OLLAMA_HOST
+from magi import providers
 
 CLASSIFIER_MODEL = os.environ.get("MAGI_CLASSIFIER_MODEL", "qwen3:4b")
 
@@ -71,25 +71,17 @@ async def classify(question: str) -> Classification:
     (caller should fall back to DECISION on exception)."""
     schema = Classification.model_json_schema()
     async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{OLLAMA_HOST}/api/chat",
-            json={
-                "model": CLASSIFIER_MODEL,
-                "messages": [
-                    {"role": "system", "content": _CLASSIFIER_SYSTEM},
-                    {"role": "user", "content": question},
-                ],
-                "format": schema,
-                "stream": False,
-                "options": {"temperature": 0.1},
-            },
+        raw = await providers.chat(
+            client,
+            CLASSIFIER_MODEL,
+            _CLASSIFIER_SYSTEM,
+            [{"role": "user", "content": question}],
+            schema,
+            temperature=0.1,
             timeout=30.0,
         )
-        response.raise_for_status()
-        from magi.core import _sanitize_llm_output, _validate_response
-        _validate_response(response)
-        content = _sanitize_llm_output(response.json()["message"]["content"])
-        return Classification.model_validate_json(content)
+        from magi.core import _sanitize_llm_output, _strip_thinking
+        return Classification.model_validate_json(_strip_thinking(_sanitize_llm_output(raw)))
 
 
 async def classify_safe(question: str) -> Classification:

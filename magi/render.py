@@ -15,6 +15,7 @@ from magi.core import (
     RecommendResponse,
     Verdict,
 )
+from magi.personas import lens_field_label
 
 ACCENT = "#d4874e"
 
@@ -185,6 +186,22 @@ def debate_status_panel(statuses: dict[str, str], rebuttals: dict, round_num: in
     return Panel(text, title=f"[bold {ACCENT}]round {round_num}[/bold {ACCENT}]", border_style=ACCENT, box=SIMPLE)
 
 
+def _conviction(level: int | None) -> str:
+    """Conviction as filled dots — how hard this member would defend the call."""
+    level = max(1, min(5, int(level or 3)))
+    return "●" * level + "○" * (5 - level)
+
+
+def _append_finding(body: Text, name: str, result) -> None:
+    """The one thing only this member's lens produced."""
+    finding = getattr(result, "lens_finding", "") or ""
+    if not finding:
+        return
+    body.append("\n\n")
+    body.append(f"  {lens_field_label(name)}: ", style=f"bold {_mc(name)}")
+    body.append(finding)
+
+
 def _persona_panel(name: str, result: PersonaResponse | Exception) -> Panel:
     if isinstance(result, Exception):
         body = Text(f"  ✗ {_sanitize_error(result)}", style="red")
@@ -193,8 +210,10 @@ def _persona_panel(name: str, result: PersonaResponse | Exception) -> Panel:
     color = VERDICT_COLOR[result.verdict]
     body = Text()
     body.append(f"  {VERDICT_ICON[result.verdict]} ", style=f"bold {color}")
-    body.append(f"{result.verdict.value}\n\n", style=f"bold {color}")
+    body.append(f"{result.verdict.value}", style=f"bold {color}")
+    body.append(f"   {_conviction(result.confidence)}\n\n", style="dim")
     body.append(f"  {result.reasoning}")
+    _append_finding(body, name, result)
     if result.verdict == Verdict.CONDITIONAL and result.condition:
         body.append("\n\n")
         body.append("  ONLY IF: ", style=f"bold {color}")
@@ -247,16 +266,19 @@ def render_debate_round(
         console.print(_debate_panel(name, prev, rebuttal, round_num))
 
 
+OUTCOME_STYLE = {
+    "consensus": ("#8abf7a", "◈"),   # everyone agreed
+    "picks": ("#8abf7a", "◈"),
+    "majority": ("#b0a878", "◈"),    # 2-1: still a decision
+    "conviction": ("#c4a35a", "◆"),  # tied on heads, decided on conviction
+    "tiebreak": ("#c4a35a", "◆"),    # dead even, desire lens broke it
+    "deadlock": ("#c4a35a", "◇"),    # legacy journal entries only
+    "split": ("#c4a35a", "◇"),
+}
+
+
 def render_synthesis(synthesis: str, outcome: str, console: Console) -> None:
-    if outcome == "consensus":
-        color = "#8abf7a"
-        icon = "◈"
-    elif outcome in ("deadlock", "split"):
-        color = "#c4a35a"
-        icon = "◇"
-    else:
-        color = "red"
-        icon = "✗"
+    color, icon = OUTCOME_STYLE.get(outcome, ("red", "✗"))
 
     console.print()
     console.print(Rule(style=color))
@@ -309,8 +331,10 @@ def _choice_panel(name: str, result: ChoiceResponse | Exception) -> Panel:
 
     body = Text()
     body.append("  ▌ ", style=f"bold {CHOICE_COLOR}")
-    body.append(f"{result.chosen_option}\n\n", style=f"bold {CHOICE_COLOR}")
+    body.append(f"{result.chosen_option}", style=f"bold {CHOICE_COLOR}")
+    body.append(f"   {_conviction(result.confidence)}\n\n", style="dim")
     body.append(f"  {result.reasoning}")
+    _append_finding(body, name, result)
     return Panel(body, title=_member_tag(name), border_style=_mc(name), box=HEAVY, padding=(0, 1))
 
 
@@ -487,8 +511,12 @@ def render_journal(entries: list[dict], console: Console) -> None:
     for entry in entries:
         ts = entry.get("timestamp", "")[:16].replace("T", " ")
         outcome = entry.get("outcome", "?")
-        if outcome == "consensus":
+        if outcome in ("consensus", "picks"):
             icon, oc = "●", "#8abf7a"
+        elif outcome == "majority":
+            icon, oc = "◐", "#b0a878"
+        elif outcome in ("conviction", "tiebreak"):
+            icon, oc = "◆", "#c4a35a"
         elif outcome in ("deadlock", "split"):
             icon, oc = "◇", "#c4a35a"
         else:
@@ -511,9 +539,12 @@ def render_stats(entries: list[dict], console: Console) -> None:
 
     total = len(entries)
     consensus_count = sum(1 for e in entries if e.get("outcome") == "consensus")
+    majority_count = sum(1 for e in entries if e.get("outcome") == "majority")
+    close_count = sum(1 for e in entries if e.get("outcome") in ("conviction", "tiebreak"))
+    # pre-0.13 journal entries, when a 2-1 vote was reported as a hung council
     deadlock_count = sum(1 for e in entries if e.get("outcome") in ("deadlock", "split"))
     picks_count = sum(1 for e in entries if e.get("outcome") == "picks")
-    other_count = total - consensus_count - deadlock_count - picks_count
+    other_count = total - consensus_count - majority_count - close_count - deadlock_count - picks_count
     outcomes_recorded = sum(1 for e in entries if e.get("user_outcome"))
 
     avg_rounds = 0
@@ -527,10 +558,16 @@ def render_stats(entries: list[dict], console: Console) -> None:
     if total > 0:
         text.append(f"  ({consensus_count * 100 // total}%)", style="dim")
     text.append("\n")
-    text.append(f"  deadlock    {deadlock_count}", style="#c4a35a")
-    if total > 0:
+    if majority_count:
+        text.append(f"  majority    {majority_count}", style="#b0a878")
+        text.append(f"  ({majority_count * 100 // total}%)\n", style="dim")
+    if close_count:
+        text.append(f"  too close   {close_count}", style="#c4a35a")
+        text.append(f"  ({close_count * 100 // total}%)\n", style="dim")
+    if deadlock_count:
+        text.append(f"  deadlock    {deadlock_count}", style="#c4a35a")
         text.append(f"  ({deadlock_count * 100 // total}%)", style="dim")
-    text.append("\n")
+        text.append("  legacy\n", style="dim")
     if picks_count:
         text.append(f"  open        {picks_count}\n", style=RECOMMEND_COLOR)
     if other_count:
@@ -540,14 +577,14 @@ def render_stats(entries: list[dict], console: Console) -> None:
 
     console.print(Panel(text, title=f"[bold {ACCENT}]stats[/bold {ACCENT}]", border_style="dim", box=ROUNDED))
 
-    if deadlock_count >= 3:
-        deadlocks = [e for e in entries if e.get("outcome") in ("deadlock", "split")]
+    close = [e for e in entries if e.get("outcome") in ("deadlock", "split", "conviction", "tiebreak")]
+    if len(close) >= 3:
         text2 = Text()
-        for e in deadlocks[:10]:
+        for e in close[:10]:
             ts = e.get("timestamp", "")[:10]
             text2.append(f"  {ts}  ", style="dim")
             text2.append(f"{e.get('question', '')[:80]}\n", style="italic")
-        console.print(Panel(text2, title="[bold #c4a35a]recent deadlocks[/bold #c4a35a]", border_style="#c4a35a", box=ROUNDED))
+        console.print(Panel(text2, title="[bold #c4a35a]the ones that split the council[/bold #c4a35a]", border_style="#c4a35a", box=ROUNDED))
 
 
 def render_memory_hits(hits: list, console: Console) -> None:
@@ -569,7 +606,7 @@ def render_patterns(patterns, console: Console) -> None:
     if patterns.repeat_question:
         lines.append("you've circled back to this one")
     if patterns.deadlock_streak >= 3:
-        lines.append(f"the council has deadlocked {patterns.deadlock_streak} times in a row")
+        lines.append(f"the last {patterns.deadlock_streak} questions split the council down the middle")
     if patterns.top_followed_member:
         color = _mc(patterns.top_followed_member)
         icon = _mi(patterns.top_followed_member)

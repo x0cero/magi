@@ -51,3 +51,38 @@ class TestApplyConfig:
             models, invited = apply_config(models, {"melchior": None, "balthasar": None, "casper": None})
             assert models == DEFAULT_MODELS
             assert invited == []
+
+
+class TestMaxRounds:
+    def test_default_when_unset(self, tmp_path, monkeypatch):
+        import magi.config as config
+
+        monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "nope.toml")
+        assert config.max_rounds(2) == 2
+
+    def test_read_from_config(self, tmp_path, monkeypatch):
+        import magi.config as config
+
+        path = tmp_path / "config.toml"
+        path.write_text("[options]\nmax_rounds = 4\n")
+        monkeypatch.setattr(config, "CONFIG_PATH", path)
+        assert config.max_rounds(2) == 4
+
+    def test_clamped_to_something_sane(self, tmp_path, monkeypatch):
+        import magi.config as config
+
+        path = tmp_path / "config.toml"
+        path.write_text("[options]\nmax_rounds = 99\n")
+        monkeypatch.setattr(config, "CONFIG_PATH", path)
+        assert config.max_rounds(2) == 6
+
+        path.write_text("[options]\nmax_rounds = 0\n")
+        assert config.max_rounds(2) == 1
+
+    def test_garbage_falls_back(self, tmp_path, monkeypatch):
+        import magi.config as config
+
+        path = tmp_path / "config.toml"
+        path.write_text('[options]\nmax_rounds = "lots"\n')
+        monkeypatch.setattr(config, "CONFIG_PATH", path)
+        assert config.max_rounds(2) == 2

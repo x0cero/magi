@@ -31,9 +31,19 @@ _EXAMPLE_CONFIG = """\
 # CLI flags and env vars override these values.
 
 [models]
-# melchior = "qwen2.5:7b"
-# balthasar = "qwen3:4b"
-# casper = "mistral:latest"
+# Bare names are local Ollama. Prefix with a provider for cloud (BYOK):
+#   anthropic/claude-opus-4-8, openai/gpt-4o, groq/llama-3.3-70b-versatile,
+#   openrouter/<model>, gemini/gemini-2.0-flash, ollama-cloud/<model>
+# melchior = "qwen3:14b"
+# balthasar = "groq/llama-3.3-70b-versatile"
+# casper = "hermes3:8b"
+
+[providers]
+# API keys for cloud members. Env vars (GROQ_API_KEY, ANTHROPIC_API_KEY,
+# OPENAI_API_KEY, OPENROUTER_API_KEY, GEMINI_API_KEY, OLLAMA_API_KEY) win
+# over these values.
+# [providers.groq]
+# api_key = "gsk_..."
 
 [specialists]
 # Auto-invite these specialists into every deliberation.
@@ -46,7 +56,7 @@ _EXAMPLE_CONFIG = """\
 
 [options]
 # classifier_model = "qwen3:4b"
-# max_rounds = 3
+# max_rounds = 2   # 1 = vote only, no debate round
 """
 
 
@@ -85,6 +95,16 @@ def apply_config(
             auto_invite.append(canonical)
 
     return models, auto_invite
+
+
+def max_rounds(default: int) -> int:
+    """Deliberation rounds from [options] max_rounds, clamped to something
+    sane. One round is a vote with no debate; past three the members restate."""
+    value = load_config().get("options", {}).get("max_rounds", default)
+    try:
+        return max(1, min(6, int(value)))
+    except (TypeError, ValueError):
+        return default
 
 
 def init_config() -> bool:

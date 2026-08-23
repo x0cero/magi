@@ -96,11 +96,11 @@ echo ""
 echo "  pulling models (~23 GB total, this takes a while)..."
 echo ""
 
-ollama pull qwen3:14b
-echo "  ✓ qwen3:14b"
+ollama pull qwen3:4b
+echo "  ✓ qwen3:4b"
 
-ollama pull phi4
-echo "  ✓ phi4"
+ollama pull dolphin3:8b
+echo "  ✓ dolphin3:8b"
 
 ollama pull hermes3:8b
 echo "  ✓ hermes3:8b"
