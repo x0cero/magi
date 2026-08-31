@@ -17,8 +17,8 @@ struct MagiDisplay: View {
     /// right, matching the reference rather than the engine's seat order.
     private var seated: [(seat: String, unit: Council.Unit)] {
         let byName = Dictionary(uniqueKeysWithValues: council.units.map { ($0.id, $0) })
-        return [("left", "CASPER"), ("top", "BALTHASAR"), ("bottom", "MELCHIOR")]
-            .compactMap { seat, name in byName[name].map { (seat, $0) } }
+        return ["CASPER", "BALTHASAR", "MELCHIOR"]
+            .compactMap { name in byName[name].map { (Seats.seat(for: name), $0) } }
     }
 
     private var extras: [Council.Unit] {
@@ -28,28 +28,27 @@ struct MagiDisplay: View {
     var body: some View {
         VStack(spacing: 10) {
             ZStack {
-                GapRules()
-
                 ForEach(seated, id: \.seat) { entry in
                     UnitPanel(unit: entry.unit, seat: entry.seat)
                 }
 
-                // The hub, sitting in the gap the three shapes leave open.
+                // The hub sits in the gap the three slabs leave open around
+                // the centre they were cut from.
                 GeometryReader { geometry in
                     Text("MAGI")
-                        .font(Theme.display(22))
+                        .font(Theme.display(min(24, geometry.size.width * 0.034)))
                         .tracking(4)
                         .foregroundStyle(Theme.orange)
-                        .glow(Theme.orange, radius: 9)
-                        .position(x: geometry.size.width * 0.545,
-                                  y: geometry.size.height * 0.515)
+                        .glow(Theme.orange, radius: 10)
+                        .position(x: geometry.size.width * Seats.centre.x,
+                                  y: geometry.size.height * Seats.centre.y)
                 }
                 .allowsHitTesting(false)
             }
-            .aspectRatio(2.05, contentMode: .fit)
-            .padding(.horizontal, 22)
-            .padding(.top, 54)
-            .padding(.bottom, 16)
+            .aspectRatio(1.62, contentMode: .fit)
+            .padding(.horizontal, 26)
+            .padding(.top, 58)
+            .padding(.bottom, 18)
 
             if !extras.isEmpty {
                 HStack(spacing: 10) {
@@ -66,29 +65,6 @@ struct MagiDisplay: View {
         .overlay(Rectangle().stroke(Theme.orange, lineWidth: 2))
         .overlay(Rectangle().stroke(Theme.orange.opacity(0.3), lineWidth: 1).padding(5))
         .glow(Theme.orange, radius: 14, intensity: 0.3)
-    }
-}
-
-/// The amber rules that show through the gaps between the three slabs. Drawn
-/// under them, so the slabs mask everything except the seams.
-private struct GapRules: View {
-    var body: some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width
-            let height = geometry.size.height
-            Path { path in
-                // The seam running down between left and right.
-                path.move(to: CGPoint(x: width * 0.42, y: 0))
-                path.addLine(to: CGPoint(x: width * 0.565, y: height * 0.47))
-                path.addLine(to: CGPoint(x: width * 0.455, y: height))
-                // The seam splitting the two on the right.
-                path.move(to: CGPoint(x: width * 0.565, y: height * 0.5))
-                path.addLine(to: CGPoint(x: width, y: height * 0.44))
-            }
-            .stroke(Theme.orange, lineWidth: 2)
-            .glow(Theme.orange, radius: 6, intensity: 0.6)
-        }
-        .allowsHitTesting(false)
     }
 }
 

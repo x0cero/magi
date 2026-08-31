@@ -18,12 +18,15 @@ enum Theme {
     /// dashboard, filled mint quadrilaterals read as the MAGI.
     static let unit = Color(red: 0.56, green: 0.93, blue: 0.71)
     static let unitReject = Color(red: 0.98, green: 0.31, blue: 0.26)
-    static let unitHold = Color(red: 0.40, green: 0.44, blue: 0.42)
 
-    /// Fill for a unit that has answered. Red when it says no, mint otherwise:
-    /// on the reference a rejecting unit goes red while the frame stays amber.
+    /// Waiting is a dimmer green, never a grey wash. The reference reads "ALL
+    /// GREEN" at rest, and a translucent grey slab let the seams show through
+    /// the middle of it and turned three shapes into one smear.
+    static let unitResting = Color(red: 0.22, green: 0.42, blue: 0.33)
+
+    /// Fill for a unit that has answered. Red when it says no, mint otherwise.
     static func unitFill(for verdict: Verdict?, decided: Bool) -> Color {
-        guard decided else { return unitHold.opacity(0.30) }
+        guard decided else { return unitResting }
         return verdict == .reject ? unitReject : unit
     }
 
