@@ -7,70 +7,73 @@ struct ContentView: View {
     @State private var stampShowing = false
     @FocusState private var inputFocused: Bool
 
-    /// How long the full-screen verdict holds before it clears. Adjustable
-    /// because the right answer is a matter of taste, and because a fixed
-    /// two-second window is impossible to screenshot:
+    /// How long the full-screen answer holds before it clears. Adjustable
+    /// because the right answer is taste, and because a fixed two-second
+    /// window is impossible to screenshot:
     ///   defaults write io.zeroarch.magi stampSeconds 8
     @AppStorage("stampSeconds") private var stampSeconds: Double = 2.6
 
     var body: some View {
         ZStack {
             Theme.void.ignoresSafeArea()
+            Schematic().ignoresSafeArea()
 
             VStack(spacing: 0) {
                 HeaderBar(council: council)
-                Divider().overlay(Theme.orangeDim.opacity(0.5))
 
-                // The console does not scroll. Watching the three units fill in
-                // is the reason this is an app and not a terminal, and the
-                // first build scrolled it off screen exactly when it mattered.
+                // The console does not scroll. Watching the three fill in is
+                // the reason this is an app and not a terminal, and the first
+                // build scrolled it away exactly when it mattered.
                 MagiDisplay(council: council)
-                    .padding(.vertical, 26)
+                    .padding(.top, 18)
+                    .padding(.bottom, 12)
                     .frame(maxWidth: .infinity)
 
                 if case .resolved = council.phase, !stampShowing {
-                    VerdictBar(verdict: council.verdict,
-                               synthesis: council.synthesis,
-                               outcome: council.outcome)
-                        .padding(.horizontal, 30)
-                        .padding(.bottom, 16)
+                    AnswerBar(verdict: council.verdict,
+                              units: council.units,
+                              synthesis: council.synthesis,
+                              outcome: council.outcome)
+                        .padding(.horizontal, 26)
+                        .padding(.bottom, 14)
                         .onTapGesture { replayStamp() }
                 }
 
                 if case let .failed(message) = council.phase {
-                    Text(message)
-                        .font(Theme.mono(12))
-                        .foregroundStyle(Theme.red)
-                        .padding(.horizontal, 30)
-                        .padding(.bottom, 12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 10) {
+                        Plate(text: "PROBLEM", color: Theme.red, size: 11, tracking: 2)
+                        Text(message)
+                            .font(Theme.mono(11))
+                            .foregroundStyle(Theme.bone.opacity(0.85))
+                    }
+                    .padding(.horizontal, 26)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                Divider().overlay(Theme.orangeDim.opacity(0.35))
+                Rectangle().fill(Theme.orangeDim.opacity(0.5)).frame(height: 1)
 
                 TranscriptScroll(lines: council.transcript, phase: council.phase)
 
-                Divider().overlay(Theme.orangeDim.opacity(0.5))
                 InputBar(draft: $draft, council: council, focused: $inputFocused)
             }
 
             ScreenGlass()
 
-            // The decision takes the whole screen, the way it does on the
-            // display, then gets out of the way so the arguments are readable.
             if stampShowing {
                 VerdictStamp(verdict: council.verdict,
+                             units: council.units,
                              synthesis: council.synthesis,
                              outcome: council.outcome)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Theme.void.opacity(0.93))
+                    .background(Theme.void.opacity(0.94))
                     .contentShape(Rectangle())
                     .onTapGesture { withAnimation(.easeOut(duration: 0.28)) { stampShowing = false } }
                     .transition(.opacity)
                     .zIndex(10)
             }
         }
-        .frame(minWidth: 980, minHeight: 820)
+        .frame(minWidth: 1000, minHeight: 840)
         .preferredColorScheme(.dark)
         .onAppear { inputFocused = true }
         .onChange(of: council.transcript.count) { _, count in
@@ -106,8 +109,109 @@ struct ContentView: View {
     }
 }
 
-/// The transcript, scrolling on its own and following the newest argument so
-/// you are never reading a stale card while a member is still talking.
+/// The masthead: a solid orange band, black text cut out of it.
+private struct HeaderBar: View {
+    @ObservedObject var council: Council
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text("MAGI")
+                .font(Theme.display(27))
+                .tracking(11)
+                .foregroundStyle(Theme.void)
+                .padding(.leading, 22)
+                .padding(.trailing, 18)
+
+            Text(Plain.tagline)
+                .font(Theme.mono(9.5))
+                .tracking(2.6)
+                .foregroundStyle(Theme.void.opacity(0.72))
+
+            Spacer()
+
+            if !council.question.isEmpty {
+                Text(council.question.uppercased())
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.void.opacity(0.66))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.trailing, 18)
+            }
+
+            StatusFlag(phase: council.phase)
+        }
+        .frame(height: 46)
+        .background(Theme.orange)
+        .glow(Theme.orange, radius: 14, intensity: 0.45)
+    }
+}
+
+/// Status reads as a word first; the kanji rides along under it as texture.
+private struct StatusFlag: View {
+    let phase: Council.Phase
+
+    var body: some View {
+        let status = Plain.status(phase)
+        VStack(alignment: .trailing, spacing: 0) {
+            Text(status.english)
+                .font(Theme.display(15))
+                .tracking(3)
+            Text(status.kanji)
+                .font(Theme.plate(9))
+                .tracking(2)
+                .opacity(0.65)
+        }
+        .foregroundStyle(Theme.void)
+        .padding(.horizontal, 18)
+        .frame(height: 46)
+        .background(Theme.void.opacity(0.14))
+    }
+}
+
+/// The answer, kept on screen after the full-screen version clears.
+private struct AnswerBar: View {
+    let verdict: Verdict?
+    let units: [Council.Unit]
+    let synthesis: String
+    let outcome: String
+
+    private var color: Color { Theme.color(for: verdict) }
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Plate(text: Plain.verdictWord(verdict).isEmpty ? "DECIDED" : Plain.verdictWord(verdict),
+                  color: color, size: 21, tracking: 3)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Plain.answer(units: units, outcome: outcome, fallback: synthesis))
+                    .font(Theme.display(19))
+                    .tracking(2.5)
+                    .foregroundStyle(Theme.bone)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                let how = Plain.howTheyDecided(outcome)
+                if !how.isEmpty {
+                    Text(how)
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.steel)
+                }
+            }
+
+            Spacer()
+
+            Text(Plain.replayHint)
+                .font(Theme.mono(9))
+                .foregroundStyle(Theme.steel)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .overlay(Rectangle().stroke(color.opacity(0.5), lineWidth: 1))
+        .overlay(CornerTicks(color: color))
+        .glow(color, radius: 9, intensity: 0.3)
+    }
+}
+
+/// What they said, scrolling on its own and following the newest argument.
 private struct TranscriptScroll: View {
     let lines: [Council.TranscriptLine]
     let phase: Council.Phase
@@ -115,18 +219,22 @@ private struct TranscriptScroll: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(spacing: 14) {
+                VStack(spacing: 13) {
                     if lines.isEmpty {
-                        EmptyState(phase: phase)
-                            .padding(.top, 34)
+                        Text(Plain.emptyState(phase))
+                            .font(Theme.mono(11))
+                            .tracking(2.2)
+                            .foregroundStyle(Theme.steel)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 30)
                     }
                     ForEach(lines) { line in
                         TranscriptCard(line: line).id(line.id)
                     }
                 }
-                .padding(.horizontal, 30)
-                .padding(.vertical, 18)
-                .frame(maxWidth: 900)
+                .padding(.horizontal, 26)
+                .padding(.vertical, 16)
+                .frame(maxWidth: 920)
                 .frame(maxWidth: .infinity)
             }
             .onChange(of: lines.count) { _, _ in
@@ -136,118 +244,6 @@ private struct TranscriptScroll: View {
                 }
             }
         }
-    }
-}
-
-private struct EmptyState: View {
-    let phase: Council.Phase
-
-    private var text: String {
-        switch phase {
-        case .warming: return "SEATING THE COUNCIL"
-        case .deliberating: return "THE COUNCIL IS READING YOUR QUESTION"
-        default: return "BRING A QUESTION.  THE COUNCIL DECIDES, IT DOES NOT ABSTAIN."
-        }
-    }
-
-    var body: some View {
-        Text(text)
-            .font(Theme.mono(11))
-            .tracking(2.5)
-            .foregroundStyle(Theme.steel)
-    }
-}
-
-/// The resolved verdict, kept on screen after the full-screen stamp clears.
-private struct VerdictBar: View {
-    let verdict: Verdict?
-    let synthesis: String
-    let outcome: String
-
-    private var color: Color { Theme.color(for: verdict) }
-
-    var body: some View {
-        HStack(spacing: 16) {
-            Text(verdict?.plate ?? "決")
-                .font(Theme.plate(26))
-                .tracking(5)
-                .foregroundStyle(Theme.void)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
-                .background(color)
-
-            Text(synthesis.replacingOccurrences(of: " — ", with: "  ·  ").uppercased())
-                .font(Theme.display(17))
-                .tracking(2.5)
-                .foregroundStyle(Theme.bone)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer()
-
-            Text("REPLAY")
-                .font(Theme.mono(9))
-                .tracking(2)
-                .foregroundStyle(Theme.steel)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .overlay(Rectangle().stroke(color.opacity(0.55), lineWidth: 1))
-        .glow(color, radius: 8, intensity: 0.35)
-    }
-}
-
-private struct HeaderBar: View {
-    @ObservedObject var council: Council
-
-    private var status: String {
-        switch council.phase {
-        case .idle: return "待機"
-        case .warming: return "起動中"
-        case let .deliberating(round): return round > 1 ? "第\(round)回" : "審議中"
-        case .resolved: return council.verdict?.plate ?? "決議"
-        case .failed: return "応答なし"
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 18) {
-            Text("MAGI")
-                .font(Theme.display(24))
-                .tracking(9)
-                .foregroundStyle(Theme.orange)
-                .glow(Theme.orange, radius: 12)
-
-            Text("決議 SYSTEM")
-                .font(Theme.plate(12))
-                .tracking(4)
-                .foregroundStyle(Theme.orangeDim)
-
-            if !council.question.isEmpty {
-                Text(council.question.uppercased())
-                    .font(Theme.mono(11))
-                    .foregroundStyle(Theme.steel)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-
-            Spacer()
-
-            if council.mode != "decision" && !council.question.isEmpty {
-                Text(council.mode.uppercased())
-                    .font(Theme.mono(10))
-                    .tracking(2)
-                    .foregroundStyle(Theme.steel)
-            }
-
-            Text(status)
-                .font(Theme.plate(15))
-                .tracking(4)
-                .foregroundStyle(Theme.bone)
-                .glow(Theme.orange, radius: 6, intensity: 0.5)
-        }
-        .padding(.horizontal, 26)
-        .padding(.vertical, 14)
     }
 }
 
@@ -263,7 +259,7 @@ private struct InputBar: View {
                 .foregroundStyle(Theme.orange)
                 .glow(Theme.orange, radius: 8)
 
-            TextField("bring a question", text: $draft)
+            TextField(Plain.placeholder, text: $draft)
                 .textFieldStyle(.plain)
                 .font(Theme.mono(14))
                 .foregroundStyle(Theme.bone)
@@ -272,16 +268,20 @@ private struct InputBar: View {
                 .disabled(council.isRunning)
 
             if council.isRunning {
-                Button("ABORT", action: council.cancel)
+                Button(Plain.stopButton, action: council.cancel)
                     .buttonStyle(ConsoleButton(color: Theme.red))
             } else {
-                Button("CONVENE", action: submit)
+                Button(Plain.askButton, action: submit)
                     .buttonStyle(ConsoleButton(color: Theme.orange))
                     .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
-        .padding(.horizontal, 26)
-        .padding(.vertical, 16)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 15)
+        .background(Theme.void.opacity(0.7))
+        .overlay(alignment: .top) {
+            Rectangle().fill(Theme.orangeDim.opacity(0.5)).frame(height: 1)
+        }
     }
 
     private func submit() {
@@ -297,7 +297,7 @@ struct ConsoleButton: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(Theme.display(13))
+            .font(Theme.display(14))
             .tracking(3)
             .foregroundStyle(configuration.isPressed ? Theme.void : color)
             .padding(.horizontal, 16)

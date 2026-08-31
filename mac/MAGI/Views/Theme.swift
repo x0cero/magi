@@ -12,6 +12,21 @@ enum Theme {
     static let bone = Color(red: 0.91, green: 0.89, blue: 0.83)
     static let steel = Color(red: 0.35, green: 0.40, blue: 0.45)
 
+    /// The units themselves are filled panels of pale mint with black text.
+    /// This is the single most identifying colour of the display and the thing
+    /// the first build got wrong: outlined orange hexagons read as a dark-mode
+    /// dashboard, filled mint quadrilaterals read as the MAGI.
+    static let unit = Color(red: 0.56, green: 0.93, blue: 0.71)
+    static let unitReject = Color(red: 0.98, green: 0.31, blue: 0.26)
+    static let unitHold = Color(red: 0.40, green: 0.44, blue: 0.42)
+
+    /// Fill for a unit that has answered. Red when it says no, mint otherwise:
+    /// on the reference a rejecting unit goes red while the frame stays amber.
+    static func unitFill(for verdict: Verdict?, decided: Bool) -> Color {
+        guard decided else { return unitHold.opacity(0.30) }
+        return verdict == .reject ? unitReject : unit
+    }
+
     static func color(for verdict: Verdict?) -> Color {
         switch verdict {
         case .accept: return green
@@ -96,6 +111,104 @@ struct ScreenGlass: View {
                 endRadius: 900
             )
             Scanlines()
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// The schematic the display sits on. The reference is never a clean surface:
+/// there is always a wireframe under everything, dim enough to read as texture
+/// rather than content. Without it the panels float on flat black and the whole
+/// thing reads as a website with an orange accent colour.
+struct Schematic: View {
+    var body: some View {
+        Canvas { context, size in
+            let centre = CGPoint(x: size.width / 2, y: size.height * 0.46)
+            let line = GraphicsContext.Shading.color(Theme.orange.opacity(0.085))
+            let faint = GraphicsContext.Shading.color(Theme.orange.opacity(0.045))
+
+            // Concentric rings around the junction the three units feed.
+            for radius in stride(from: 90.0, through: max(size.width, size.height), by: 118) {
+                context.stroke(
+                    Path(ellipseIn: CGRect(x: centre.x - radius, y: centre.y - radius,
+                                           width: radius * 2, height: radius * 2)),
+                    with: faint, lineWidth: 1
+                )
+            }
+
+            // Grid.
+            var x: CGFloat = 0
+            while x < size.width {
+                context.stroke(Path { $0.move(to: CGPoint(x: x, y: 0))
+                                      $0.addLine(to: CGPoint(x: x, y: size.height)) },
+                               with: faint, lineWidth: 0.5)
+                x += 68
+            }
+            var y: CGFloat = 0
+            while y < size.height {
+                context.stroke(Path { $0.move(to: CGPoint(x: 0, y: y))
+                                      $0.addLine(to: CGPoint(x: size.width, y: y)) },
+                               with: faint, lineWidth: 0.5)
+                y += 68
+            }
+
+            // Sight lines out of the junction, at the angles the units sit on.
+            for angle in [212.0, 328.0, 90.0] {
+                let radians = angle * .pi / 180
+                context.stroke(
+                    Path { path in
+                        path.move(to: centre)
+                        path.addLine(to: CGPoint(x: centre.x + cos(radians) * size.width,
+                                                 y: centre.y + sin(radians) * size.width))
+                    },
+                    with: line, lineWidth: 1
+                )
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// A solid plate of colour with the text cut out of it. The single most
+/// recognisable element of the reference, and the reason a heading here never
+/// looks like a heading on a web page.
+struct Plate: View {
+    var text: String
+    var color: Color = Theme.orange
+    var size: CGFloat = 13
+    var tracking: CGFloat = 3
+
+    var body: some View {
+        Text(text)
+            .font(Theme.display(size))
+            .tracking(tracking)
+            .foregroundStyle(Theme.void)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 3)
+            .background(color)
+    }
+}
+
+/// Corner ticks. Every framed region on the reference is registered with them.
+struct CornerTicks: View {
+    var color: Color = Theme.orangeDim
+    var length: CGFloat = 13
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let height = geometry.size.height
+            Path { path in
+                for corner in [CGPoint(x: 0, y: 0), CGPoint(x: width, y: 0),
+                               CGPoint(x: 0, y: height), CGPoint(x: width, y: height)] {
+                    let dx: CGFloat = corner.x == 0 ? length : -length
+                    let dy: CGFloat = corner.y == 0 ? length : -length
+                    path.move(to: CGPoint(x: corner.x + dx, y: corner.y))
+                    path.addLine(to: corner)
+                    path.addLine(to: CGPoint(x: corner.x, y: corner.y + dy))
+                }
+            }
+            .stroke(color, lineWidth: 1)
         }
         .allowsHitTesting(false)
     }
