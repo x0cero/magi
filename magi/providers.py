@@ -17,6 +17,7 @@ env var, falling back to [providers] in ~/.config/magi/config.toml.
 import copy
 import json
 import os
+import sys
 
 import httpx
 
@@ -131,6 +132,25 @@ def _raise_for_status(provider: str, response: httpx.Response) -> None:
 # between the council fitting on a laptop and thrashing.
 NUM_CTX = int(os.environ.get("MAGI_NUM_CTX", "8192"))
 
+# Sampling is stochastic at temperature 0.7, so two runs of identical code
+# disagree: the same 28-question suite produced 12, 13 and 17 fabricated
+# premises on code that never changed. That noise band is wider than most of
+# the deltas twelve versions were tuned on. MAGI_SEED pins Ollama's sampler so
+# an A/B actually measures the code; leave it unset for normal use, where
+# varied answers are the point.
+def current_seed() -> int | None:
+    """Read MAGI_SEED at call time, not import time, so the eval harness can
+    set it per run in-process."""
+    raw = os.environ.get("MAGI_SEED", "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"warning: MAGI_SEED must be an integer, got {raw!r}, ignoring it", file=sys.stderr)
+        return None
+
+
 # `think` is a TOP-LEVEL field on /api/chat, not an option. Passing it inside
 # options is silently ignored, and a reasoning model then spends its whole
 # num_predict budget on hidden chain-of-thought and returns empty content —
@@ -138,17 +158,21 @@ NUM_CTX = int(os.environ.get("MAGI_NUM_CTX", "8192"))
 # verdict with the flag in the right place.
 def _ollama_body(model: str, system: str, messages: list[dict], schema: dict,
                  temperature: float, num_predict: int, keep_alive: str | None) -> dict:
+    options = {
+        "temperature": temperature,
+        "num_predict": num_predict,
+        "num_ctx": NUM_CTX,
+    }
+    seed = current_seed()
+    if seed is not None:
+        options["seed"] = seed
     body = {
         "model": model,
         "messages": [{"role": "system", "content": system}] + messages,
         "format": schema,
         "stream": False,
         "think": False,
-        "options": {
-            "temperature": temperature,
-            "num_predict": num_predict,
-            "num_ctx": NUM_CTX,
-        },
+        "options": options,
     }
     if keep_alive:
         body["keep_alive"] = keep_alive
@@ -226,6 +250,11 @@ async def _chat_openai_compat(client: httpx.AsyncClient, provider: str, model: s
         else:
             body["max_tokens"] = num_predict
             body["temperature"] = temperature
+        # Best-effort only: these providers treat seed as a hint, not a
+        # guarantee, so a BYOK council is never as reproducible as a local one.
+        seed = current_seed()
+        if seed is not None:
+            body["seed"] = seed
         response = await client.post(
             f"{base}/chat/completions",
             json=body,

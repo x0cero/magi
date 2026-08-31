@@ -698,6 +698,28 @@ def _find_ungrounded(positions: dict, question: str) -> dict[str, str]:
 MAX_UNVERIFIED_TERMS = 5
 
 
+# Members are consulted concurrently and collected as they finish, so the dict
+# that comes back is in arrival order: whichever model happened to be fastest
+# that millisecond. Downstream, that order is not cosmetic. The round-2 prompt
+# lists the other two members in it, and _unverified_terms truncates to the
+# first MAX_UNVERIFIED_TERMS it sees, so a different finishing order names a
+# different set of invented specifics back to the council. Identical code
+# scored 12, 13 and 17 fabricated premises across three runs, which made every
+# A/B a coin flip. Council order is the canonical order everywhere past
+# collection; specialists, which are not seated in DEFAULT_MODELS, follow in
+# name order so they are stable too.
+def _in_council_order(positions: dict, models: dict[str, str]) -> dict:
+    ordered = {n: positions[n] for n in models if n in positions}
+    rest = sorted(n for n in positions if n not in ordered)
+    ordered.update({n: positions[n] for n in rest})
+    return ordered
+
+
+def _canonically_ordered(positions: dict) -> dict:
+    """Order by the default seating when the caller has not already done it."""
+    return _in_council_order(positions, DEFAULT_MODELS)
+
+
 def _unverified_terms(positions: dict, question: str) -> list[str]:
     """Specifics the council floated in round 1 that the user never gave.
 
@@ -708,7 +730,9 @@ def _unverified_terms(positions: dict, question: str) -> list[str]:
         return []
     q_stems, q_figs = stems(question), figures(question)
     terms: list[str] = []
-    for position in positions.values():
+    # Council order, not arrival order: this list is truncated below, so who
+    # gets read first decides which invented specifics the round-2 prompt names.
+    for position in _canonically_ordered(positions).values():
         for field in ("reasoning", "lens_finding", "condition"):
             asserted, _ = premise_hits(str(getattr(position, field, "") or ""), q_stems, q_figs)
             for term in asserted:
@@ -925,7 +949,8 @@ async def iterative_deliberate(
         initial_votes[name] = result
         yield ("vote", name, result)
 
-    valid: dict[str, PersonaResponse] = {n: v for n, v in initial_votes.items() if isinstance(v, PersonaResponse)}
+    valid: dict[str, PersonaResponse] = _in_council_order(
+        {n: v for n, v in initial_votes.items() if isinstance(v, PersonaResponse)}, models)
 
     if len(valid) < 2:
         for name, response in valid.items():
@@ -940,7 +965,7 @@ async def iterative_deliberate(
         valid[name] = fresh
         yield ("revote", name, fresh)
 
-    current_positions = dict(valid)
+    current_positions = dict(valid)  # already in council order
 
     def finish(outcome: str):
         for member, response in current_positions.items():
@@ -1158,7 +1183,8 @@ async def iterative_choose(
         initial[name] = result
         yield ("vote", name, result)
 
-    valid: dict[str, ChoiceResponse] = {n: v for n, v in initial.items() if isinstance(v, ChoiceResponse)}
+    valid: dict[str, ChoiceResponse] = _in_council_order(
+        {n: v for n, v in initial.items() if isinstance(v, ChoiceResponse)}, models)
     if len(valid) < 2:
         yield ("done", "incomplete", valid)
         return
@@ -1170,7 +1196,7 @@ async def iterative_choose(
         valid[name] = fresh
         yield ("revote", name, fresh)
 
-    current = dict(valid)
+    current = dict(valid)  # already in council order
     if _is_choice_consensus(current):
         yield ("done", "consensus", current)
         return
@@ -1360,7 +1386,8 @@ async def iterative_recommend(
         initial[name] = result
         yield ("vote", name, result)
 
-    valid: dict[str, RecommendResponse] = {n: v for n, v in initial.items() if isinstance(v, RecommendResponse)}
+    valid: dict[str, RecommendResponse] = _in_council_order(
+        {n: v for n, v in initial.items() if isinstance(v, RecommendResponse)}, models)
     outcome = "picks" if len(valid) >= 2 else "incomplete"
     yield ("done", outcome, valid)
 

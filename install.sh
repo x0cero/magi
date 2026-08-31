@@ -110,7 +110,7 @@ echo "  ✓ qwen3:4b (classifier)"
 
 echo ""
 echo "  installing magi..."
-pipx install git+https://github.com/0arch-io/magi 2>/dev/null || pipx install --force git+https://github.com/0arch-io/magi
+pipx install git+https://github.com/x0cero/magi 2>/dev/null || pipx install --force git+https://github.com/x0cero/magi
 
 echo ""
 echo "  ✓ done. type 'magi' to start."

@@ -248,9 +248,18 @@ def score_result(result: dict) -> dict:
     texts = final_texts or r1_texts
     blob = " ".join(texts)
 
-    r1_stances = _stances(result.get("round1_positions", {}))
     final_stances = _stances(result.get("final_positions", {}))
-    changed = sum(1 for a, b in zip(r1_stances, final_stances) if a != b)
+    # By member, not by position. Zipping two lists compared MELCHIOR's opening
+    # verdict against whoever happened to sit at the same index in the final
+    # dict, so the count tracked dict ordering rather than anyone changing
+    # their mind: it read 2-5 while the two dicts happened to agree on order
+    # and 24-26 the moment one of them was sorted.
+    r1_by_member = _stance_by_member(result.get("round1_positions", {}))
+    final_by_member = _stance_by_member(result.get("final_positions", {}))
+    changed = sum(
+        1 for name, before in r1_by_member.items()
+        if name in final_by_member and final_by_member[name] != before
+    )
     ground = grounding(result)
 
     return {

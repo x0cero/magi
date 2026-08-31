@@ -3,12 +3,14 @@ import sys
 
 import click
 
+from magi import __version__
 from magi.config import apply_config, init_config
 from magi.core import DEFAULT_MODELS
 from magi.personas import SPECIALIST_DEFAULT_MODELS, SPECIALISTS
 
 
 @click.command()
+@click.version_option(__version__, "-V", "--version", prog_name="magi")
 @click.argument("question", nargs=-1, required=False)
 @click.option("--melchior", default=None, help=f"Override Melchior's model (default: {DEFAULT_MODELS['MELCHIOR']})")
 @click.option("--balthasar", default=None, help=f"Override Balthasar's model (default: {DEFAULT_MODELS['BALTHASAR']})")

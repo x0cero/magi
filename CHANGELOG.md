@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.13.2: the same code stopped disagreeing with itself
+
+Three runs of the unchanged 28-question suite returned 12, 13 and 17 fabricated
+premises. Read as a before-and-after, that looked like a regression worth
+reverting. It was not a regression at all, and chasing it surfaced the reason.
+
+**Council order was whatever the GPU finished first.** Members are consulted
+concurrently and collected with `as_completed`, so the positions dict came back
+in arrival order. That order is not cosmetic. The round-two prompt lists the
+other two members in it, and `_unverified_terms` truncates to the first five
+specifics it reads, so a different finishing order named a *different set* of
+invented facts back to the council. The pipeline's own fabrication brake was
+being aimed by a race. Positions are now pinned to council order the moment
+they are collected, and `_unverified_terms` orders them itself as a second
+line of defence.
+
+**`MAGI_SEED` pins the sampler.** Unset by default, because varied answers are
+the point in normal use. Set it and Ollama's sampling is fixed, which is what
+an A/B needs. The two changes compound: before, the same seed still produced
+different verdicts, because the race sat downstream of sampling. After, a seeded
+run reproduces byte for byte.
+
+**`evals band` reports the spread across repeats**, and `evals compare` now
+warns when either run is unseeded instead of printing a confident "WORSE".
+Twelve versions of this project were tuned on single runs; the tool now states
+the smallest delta worth believing rather than leaving it in a memory file.
+
+**The stance-change metric was counting dictionary order.** It zipped two lists
+of verdicts and compared them by position, so it measured MELCHIOR's opening
+verdict against whoever sat at the same index in the final dict. It read 2 to 5
+while the two dicts happened to agree on order, and 24 to 26 the moment one of
+them was sorted, which is how pinning council order appeared to make the
+members flip-flop five times as often. It compares by member now.
+
+**Honest result: pinning the order does not make the council more truthful.**
+Measured on one machine at seeds 1, 2 and 3, before and after, every metric
+overlaps. Fabricated premises ran 18-23 before against 17-22 after, with no
+separation anywhere else. What changed is that the after numbers are
+reproducible and the before numbers were not. That is the whole claim.
+
+Do not compare any of these figures against the 0.13.1 tables. Those were
+measured on a different machine running Ollama 0.32.15, and the same unchanged
+code scores about 20 fabricated premises here against about 13 there. The
+run-to-run band and the machine-to-machine gap were both larger than any code
+change this project has ever measured.
+
+Also in this release, from live use rather than the harness: follow-ups typed at
+`❯❯` were being sent through the intake classifier and bounced as noise, which
+silently killed the whole argue-back feature (they now inherit the thread's
+mode and skip intake); a typo in a member's pick minted a phantom option, so
+option matching falls back to a nearest-match; and findings truncated mid-phrase
+now cut at a clause boundary.
+
 ## 0.13.1 — the council stops making things up
 
 Found by using it. Asked "should i push a database migration to prod at 5pm on

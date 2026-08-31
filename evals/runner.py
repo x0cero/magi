@@ -114,9 +114,14 @@ async def run_question(q: dict, models: dict[str, str]) -> dict:
 
 
 async def run_suite(questions: list[dict], models: dict[str, str], out_path: Path,
-                    progress=None) -> list[dict]:
+                    progress=None, seed: int | None = None) -> list[dict]:
     """Sequential on purpose: concurrent questions would contend for the same
-    Ollama GPU and make the latency numbers meaningless."""
+    Ollama GPU and make the latency numbers meaningless.
+
+    The seed is recorded in the run file, not just applied, because a run with
+    no seed can only ever be one sample of a wide distribution and a later
+    reader needs to know which kind of number they are looking at.
+    """
     results = []
     out_path.parent.mkdir(parents=True, exist_ok=True)
     for i, q in enumerate(questions, 1):
@@ -126,6 +131,6 @@ async def run_suite(questions: list[dict], models: dict[str, str], out_path: Pat
         results.append(result)
         # write after every question so a long run is never lost
         out_path.write_text(json.dumps(
-            {"models": models, "results": results}, indent=2, default=str
+            {"models": models, "seed": seed, "results": results}, indent=2, default=str
         ))
     return results

@@ -60,9 +60,13 @@ curl -fsSL https://raw.githubusercontent.com/x0cero/magi/main/install.sh | bash
 Or if you prefer doing it yourself:
 
 ```bash
-pipx install git+https://github.com/x0cero/magi
+pipx install magi-council
 ollama pull qwen3:4b && ollama pull dolphin3:8b && ollama pull hermes3:8b
 ```
+
+The package is `magi-council` because plain `magi` was already taken on PyPI by
+an unrelated project. The command you type is still `magi`. To install straight
+from source instead: `pipx install git+https://github.com/x0cero/magi`.
 
 Total model footprint: ~12GB, and a warm council answers in seconds. Verify with `magi doctor`.
 
@@ -284,10 +288,18 @@ MAGI_NUM_CTX=16384 magi
 MAGI ships with its own evaluation harness, because twelve versions of prompt tuning by vibes is how you fix the same bug twice. It runs a fixed suite of questions through the real pipeline and scores the things that make a council good or useless.
 
 ```bash
-python -m evals run --out evals/runs/mine.json
+python -m evals run --seed 1 --out evals/runs/mine.json
 python -m evals score evals/runs/mine.json -v
+python -m evals band evals/runs/seed1.json evals/runs/seed2.json evals/runs/seed3.json
 python -m evals compare evals/runs/before.json evals/runs/mine.json
 ```
+
+**Seed your runs, and measure the spread before you believe a delta.** Without
+`--seed`, one run is a single sample of a wide distribution: three runs of
+identical code here returned 12, 13 and 17 fabricated premises, and read as a
+before-and-after that looks like a regression. `band` scores several repeats
+together and prints the smallest change worth believing. `compare` warns you
+when it is comparing dice as well as code.
 
 What it measures:
 
@@ -318,7 +330,23 @@ And 0.13.0 against 0.13.1, on the fabrication problem the earlier scorecard coul
 | answers resting on an invented fact | 6 | 2 |
 | questions with any fabrication | 45% | 30% |
 
+Both of those tables predate seeded runs, so read them as directional. Every
+number after 0.13.2 comes from a seeded repeat with its band reported.
+
 `evals/runs/baseline-v0.12.json` is committed so you can reproduce the comparison.
+
+## Reproducible runs
+
+Set `MAGI_SEED` to pin the sampler when you need two runs to be comparable:
+
+```bash
+MAGI_SEED=1 magi "should i take the contract"
+```
+
+Leave it unset for normal use. Varied answers across askings are the point: the
+council reading a question differently on a second pass is information about
+how close the call is. Cloud providers treat the seed as a hint rather than a
+guarantee, so a BYOK council is never as reproducible as a local one.
 
 ## Caveats
 

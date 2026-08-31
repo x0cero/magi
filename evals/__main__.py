@@ -9,6 +9,8 @@
 import argparse
 import asyncio
 import json
+import os
+import statistics
 import sys
 from pathlib import Path
 
@@ -18,6 +20,9 @@ from evals.runner import run_suite
 
 
 def cmd_run(args) -> int:
+    if args.seed is not None:
+        os.environ["MAGI_SEED"] = str(args.seed)
+
     from magi.core import DEFAULT_MODELS
 
     models = dict(DEFAULT_MODELS)
@@ -37,7 +42,9 @@ def cmd_run(args) -> int:
     def progress(i, total, q):
         print(f"  [{i}/{total}] {q['id']:<20} {q['text'][:56]}", flush=True)
 
-    results = asyncio.run(run_suite(questions, models, out, progress))
+    if args.seed is None:
+        print("  (no --seed: this run is one sample of a wide distribution)")
+    results = asyncio.run(run_suite(questions, models, out, progress, seed=args.seed))
     card = score_run(results)
     print()
     print_card(card, label=out.name)
@@ -113,8 +120,21 @@ _COMPARE_KEYS = [
 
 
 def cmd_compare(args) -> int:
-    before = score_run(json.loads(Path(args.before).read_text())["results"])
-    after = score_run(json.loads(Path(args.after).read_text())["results"])
+    before_raw = json.loads(Path(args.before).read_text())
+    after_raw = json.loads(Path(args.after).read_text())
+    before = score_run(before_raw["results"])
+    after = score_run(after_raw["results"])
+
+    # A "WORSE" verdict off two unseeded runs is how a noise band got mistaken
+    # for a regression once already.
+    if before_raw.get("seed") is None or after_raw.get("seed") is None:
+        print("WARNING: at least one run is unseeded, so every verdict below "
+              "includes sampling noise.")
+        print("         Run `evals band <repeats>` first and ignore any delta "
+              "smaller than the spread.\n")
+    elif before_raw["seed"] != after_raw["seed"]:
+        print(f"WARNING: different seeds ({before_raw['seed']} vs "
+              f"{after_raw['seed']}), so you are comparing dice as well as code.\n")
 
     print(f"{'metric':<24} {'before':>10} {'after':>10}   verdict")
     print("-" * 62)
@@ -133,12 +153,52 @@ def cmd_compare(args) -> int:
     return 0
 
 
+def cmd_band(args) -> int:
+    """Score several runs of the SAME code together and print the spread.
+
+    This exists because a single run lied: the same 28 questions on unchanged
+    code returned 12, 13 and 17 fabricated premises, and a one-run comparison
+    read that as a regression. A delta is only real if it clears the band.
+    """
+    cards, labels, seeds = [], [], []
+    for path in args.runs:
+        data = json.loads(Path(path).read_text())
+        cards.append(score_run(data["results"]))
+        labels.append(Path(path).name)
+        seeds.append(data.get("seed"))
+
+    n = len(cards)
+    if n < 2:
+        print("band needs at least two runs of the same code", file=sys.stderr)
+        return 1
+
+    print(f"BAND over {n} runs: {', '.join(labels)}")
+    if len(set(seeds)) == 1 and seeds[0] is not None:
+        print(f"WARNING: every run used seed {seeds[0]}; identical seeds measure "
+              "one sample, not the spread. Vary the seed across repeats.")
+    print("=" * 62)
+    print(f"{'metric':<24} {'min':>9} {'mean':>9} {'max':>9} {'spread':>9}")
+    print("-" * 62)
+    for key in _COMPARE_KEYS:
+        vals = [c[key] for c in cards]
+        lo, hi = min(vals), max(vals)
+        mean = statistics.fmean(vals)
+        fmt = (lambda v: f"{v:.3f}") if any(isinstance(v, float) for v in vals) else (lambda v: f"{v:g}")
+        print(f"{key:<24} {fmt(lo):>9} {fmt(mean):>9} {fmt(hi):>9} {fmt(hi - lo):>9}")
+    print()
+    print("Read 'spread' as the smallest change worth believing: a delta inside")
+    print("it is noise, however much it looks like a regression.")
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="evals")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     run = sub.add_parser("run", help="run the suite and score it")
     run.add_argument("--out", default="evals/runs/latest.json")
+    run.add_argument("--seed", type=int,
+                     help="pin the sampler so an A/B measures the code, not the dice")
     run.add_argument("--tag", action="append", help="filter by mode or 'divergent'")
     run.add_argument("--id", action="append", help="run specific question ids")
     run.add_argument("--melchior")
@@ -150,6 +210,10 @@ def main(argv=None) -> int:
     score.add_argument("run")
     score.add_argument("-v", "--verbose", action="store_true")
     score.set_defaults(func=cmd_score)
+
+    band = sub.add_parser("band", help="spread across repeat runs of the same code")
+    band.add_argument("runs", nargs="+")
+    band.set_defaults(func=cmd_band)
 
     comp = sub.add_parser("compare", help="compare two saved runs")
     comp.add_argument("before")
