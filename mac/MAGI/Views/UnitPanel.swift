@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A polygon given in normalised coordinates, so the slabs keep interlocking
+/// A polygon in normalised coordinates, so the shapes hold their proportions
 /// at any window size.
 struct UnitShape: Shape {
     let points: [CGPoint]
@@ -18,15 +18,12 @@ struct UnitShape: Shape {
     }
 }
 
-/// One seat: a solid slab with black text punched out of it.
+/// One unit: a solid block with black text on it, the way the display draws it.
 ///
-/// Solid, always. The first build made an undecided seat a translucent grey,
-/// which let the seams show through the middle of it and turned three shapes
-/// into one smear. On the reference the panels are green at rest and go red
-/// when they refuse, so "waiting" is a dimmer green, never a grey wash.
+/// Green at rest, red when it refuses. Nothing translucent, no bloom on the
+/// fill, and the name is the largest thing on the block.
 struct UnitPanel: View {
     let unit: Council.Unit
-    let seat: String
 
     private var decided: Bool {
         guard let position = unit.position else { return false }
@@ -40,67 +37,58 @@ struct UnitPanel: View {
         return unit.position?.verdictKey == .reject ? Theme.unitReject : Theme.unit
     }
 
-    private var ink: Color { Theme.void.opacity(decided ? 1 : 0.62) }
     private var state: (kanji: String, english: String) { Plain.unitState(unit.position) }
 
     var body: some View {
         GeometryReader { geometry in
-            let points = Seats.polygon(seat)
-            let anchor = Seats.labelAnchor(seat)
+            let points = Seats.shapes[unit.id] ?? []
+            let anchor = Seats.labels[unit.id] ?? CGPoint(x: 0.5, y: 0.5)
+            let width = geometry.size.width
+            let allowed = (Seats.labelWidths[unit.id] ?? 0.32) * width
 
             ZStack {
-                // No bloom on the fill. A glow on a shape this large spreads
-                // its colour straight across the seam, and two red slabs then
-                // read as one. The reference has hard edges; the light comes
-                // from the outline, not the field.
-                UnitShape(points: points)
-                    .fill(fill)
-
-                // Amber edge on every slab. This is the only thing separating
-                // two neighbours that happen to have voted the same way.
-                UnitShape(points: points)
-                    .stroke(Theme.orange, lineWidth: 2)
+                UnitShape(points: points).fill(fill)
+                UnitShape(points: points).stroke(Theme.orange, lineWidth: 2)
 
                 UnitShape(points: points)
                     .fill(.white)
                     .opacity(unit.reporting ? 0.55 : 0)
                     .blendMode(.plusLighter)
 
-                VStack(spacing: 1) {
+                VStack(spacing: 2) {
                     Text("\(unit.name) · \(unit.number)")
-                        .font(Theme.display(min(30, geometry.size.width * 0.043)))
-                        .tracking(1.4)
-                        .foregroundStyle(ink)
+                        .font(Theme.display(width * 0.030))
+                        .tracking(0.5)
+                        .foregroundStyle(Theme.void)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.5)
+                        .minimumScaleFactor(0.4)
 
                     Text(Plain.role(unit.name))
-                        .font(Theme.mono(min(9, geometry.size.width * 0.0125)))
-                        .tracking(1.2)
-                        .foregroundStyle(ink.opacity(0.66))
+                        .font(Theme.mono(width * 0.0105))
+                        .tracking(1.1)
+                        .foregroundStyle(Theme.void.opacity(0.62))
 
                     if decided {
                         Text(state.english)
-                            .font(Theme.display(min(34, geometry.size.width * 0.05)))
-                            .foregroundStyle(ink)
+                            .font(Theme.display(width * 0.040))
+                            .foregroundStyle(Theme.void)
                             .lineLimit(1)
                             .minimumScaleFactor(0.4)
                             .padding(.top, 2)
 
                         HStack(spacing: 6) {
-                            Text(state.kanji).font(Theme.plate(min(13, geometry.size.width * 0.018)))
+                            Text(state.kanji).font(Theme.plate(width * 0.016))
                             if let conviction = unit.position?.confidence {
                                 Text(Plain.conviction(conviction))
-                                    .font(Theme.mono(min(8, geometry.size.width * 0.011)))
+                                    .font(Theme.mono(width * 0.0098))
                                     .tracking(1)
                             }
                         }
-                        .foregroundStyle(ink.opacity(0.6))
+                        .foregroundStyle(Theme.void.opacity(0.6))
                     }
                 }
-                .frame(width: geometry.size.width * 0.34)
-                .position(x: geometry.size.width * anchor.x,
-                          y: geometry.size.height * anchor.y)
+                .frame(width: allowed)
+                .position(x: width * anchor.x, y: geometry.size.height * anchor.y)
                 .allowsHitTesting(false)
             }
         }

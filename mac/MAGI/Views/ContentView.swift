@@ -30,8 +30,9 @@ struct ContentView: View {
                 // the reason this is an app and not a terminal, and the first
                 // build scrolled it away exactly when it mattered.
                 MagiDisplay(council: council)
+                    .frame(maxWidth: 1150)
                     .padding(.horizontal, 18)
-                    .padding(.top, 14)
+                    .padding(.top, 12)
                     .padding(.bottom, 10)
 
                 if case .resolved = council.phase, !stampShowing {
