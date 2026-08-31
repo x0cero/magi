@@ -17,6 +17,7 @@ env var, falling back to [providers] in ~/.config/magi/config.toml.
 import copy
 import json
 import os
+import re
 import sys
 
 import httpx
@@ -74,8 +75,24 @@ def parse_model_spec(spec: str) -> tuple[str, str]:
     return "ollama", spec
 
 
+# A model whose tag is `:cloud` is served through the local Ollama daemon but
+# actually runs on Ollama's servers. It reaches the same /api/chat endpoint as a
+# genuinely local model, so nothing in the spec distinguishes the two, but it
+# behaves differently in two ways that both break the council:
+#
+#   1. It ignores `format`, so a schema does not constrain the reply at all and
+#      the model answers in prose. Every seat using one failed validation.
+#   2. It ignores `think: false` and narrates its reasoning into `content`.
+#
+# It also cannot be warmed, and asking it to be returns an HTTP error.
+def is_cloud_tag(spec: str) -> bool:
+    return parse_model_spec(spec)[1].endswith(":cloud")
+
+
 def is_local(spec: str) -> bool:
-    return parse_model_spec(spec)[0] == "ollama"
+    """Runs on this machine. A `:cloud` tag is served through the local daemon
+    but is not local: it needs no warming and its questions leave the box."""
+    return parse_model_spec(spec)[0] == "ollama" and not is_cloud_tag(spec)
 
 
 def get_api_key(provider: str) -> str | None:
@@ -166,14 +183,26 @@ def _ollama_body(model: str, system: str, messages: list[dict], schema: dict,
     seed = current_seed()
     if seed is not None:
         options["seed"] = seed
-    body = {
-        "model": model,
-        "messages": [{"role": "system", "content": system}] + messages,
-        "format": schema,
-        "stream": False,
-        "think": False,
-        "options": options,
-    }
+    # A cloud-tagged model drops `format` on the floor, so the schema has to
+    # ride in the prompt the way it does for the OpenAI-compatible providers,
+    # and pydantic validates whatever comes back.
+    if is_cloud_tag(model):
+        body = {
+            "model": model,
+            "messages": [{"role": "system", "content": system + _schema_instruction(schema)}] + messages,
+            "stream": False,
+            "think": False,
+            "options": options,
+        }
+    else:
+        body = {
+            "model": model,
+            "messages": [{"role": "system", "content": system}] + messages,
+            "format": schema,
+            "stream": False,
+            "think": False,
+            "options": options,
+        }
     if keep_alive:
         body["keep_alive"] = keep_alive
     return body
@@ -192,7 +221,8 @@ async def _chat_ollama(client: httpx.AsyncClient, model: str, system: str,
         raise OllamaUnavailable()
     response.raise_for_status()
     _check_response(response)
-    return response.json()["message"]["content"]
+    content = response.json()["message"]["content"]
+    return extract_json_object(content) if is_cloud_tag(model) else content
 
 
 async def _chat_ollama_cloud(client: httpx.AsyncClient, model: str, system: str,
@@ -208,6 +238,43 @@ async def _chat_ollama_cloud(client: httpx.AsyncClient, model: str, system: str,
     _raise_for_status("ollama-cloud", response)
     _check_response(response)
     return response.json()["message"]["content"]
+
+
+def extract_json_object(text: str) -> str:
+    """Return the JSON object buried in `text`, or `text` unchanged.
+
+    A cloud-tagged model narrates before it answers: several paragraphs of
+    reasoning, then the JSON, in one string. The JSON is valid; it just is not
+    the whole reply.
+
+    Brace counting was the obvious approach and it does not survive contact
+    with the prose, which contains braces and unbalanced quotes of its own and
+    desynchronises the scan. This instead takes the last closing brace and
+    walks candidate opening braces backwards, asking the JSON parser which
+    slice is real. Slower, and correct on text nobody controls.
+    """
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = re.sub(r"^```[a-zA-Z]*\n?", "", stripped)
+        stripped = re.sub(r"\n?```$", "", stripped).strip()
+    try:
+        json.loads(stripped)
+        return stripped
+    except ValueError:
+        pass
+
+    close = stripped.rfind("}")
+    if close == -1:
+        return text
+    opens = [i for i, ch in enumerate(stripped[:close]) if ch == "{"]
+    for open_index in reversed(opens):
+        candidate = stripped[open_index:close + 1]
+        try:
+            json.loads(candidate)
+        except ValueError:
+            continue
+        return candidate
+    return text
 
 
 def _schema_instruction(schema: dict) -> str:
