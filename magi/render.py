@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from rich.box import HEAVY, ROUNDED, SIMPLE
+import os
+import re
+
+from rich.box import HEAVY, ROUNDED, SIMPLE, SQUARE
 from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.text import Text
 
+from magi import nerv, sound
 from magi.core import (
     ChoiceRebuttal,
     ChoiceResponse,
@@ -17,7 +21,33 @@ from magi.core import (
 )
 from magi.personas import lens_field_label
 
+
+# The NERV console is the default face. MAGI_THEME=classic keeps the original
+# muted panels, which are easier to read for long sessions and do not assume a
+# terminal that can draw kanji.
+def _theme() -> str:
+    return (os.environ.get("MAGI_THEME") or "nerv").strip().lower()
+
+
+def nerv_theme() -> bool:
+    return _theme() != "classic"
+
+
 ACCENT = "#d4874e"
+
+# On the display the three units are not colour-coded against each other; the
+# whole console is one orange. Members stay distinguishable by their unit
+# number and their lens label, which is how the show does it too.
+NERV_MEMBER_COLOR = {
+    "MELCHIOR": nerv.ORANGE,
+    "BALTHASAR": nerv.ORANGE,
+    "CASPER": nerv.ORANGE,
+    "BANKER": nerv.BONE,
+    "THERAPIST": nerv.BONE,
+    "LAWYER": nerv.BONE,
+    "COACH": nerv.BONE,
+    "DOCTOR": nerv.BONE,
+}
 
 MEMBER_COLOR = {
     "MELCHIOR": "#c47a5a",
@@ -47,6 +77,18 @@ VERDICT_COLOR = {
     Verdict.CONDITIONAL: "#c4a35a",
 }
 
+NERV_VERDICT_COLOR = {
+    Verdict.ACCEPT: nerv.GREEN,
+    Verdict.REJECT: nerv.RED,
+    Verdict.CONDITIONAL: nerv.ORANGE,
+}
+
+
+def _vc(verdict) -> str:
+    if nerv_theme():
+        return NERV_VERDICT_COLOR[verdict]
+    return VERDICT_COLOR[verdict]
+
 VERDICT_ICON = {
     Verdict.ACCEPT: "▌YES",
     Verdict.REJECT: "▌NO",
@@ -58,11 +100,27 @@ RECOMMEND_COLOR = "#a07db5"
 
 
 def _mc(name: str) -> str:
+    if nerv_theme():
+        return NERV_MEMBER_COLOR.get(name, nerv.BONE)
     return MEMBER_COLOR.get(name, "white")
 
 
 def _mi(name: str) -> str:
     return MEMBER_ICON.get(name, "·")
+
+
+def _box():
+    """Square corners on the console. The reference has no rounded anything."""
+    return SQUARE if nerv_theme() else HEAVY
+
+
+def _chrome_box():
+    """Same rule for the secondary panels: help, journal, stats, recall."""
+    return SQUARE if nerv_theme() else ROUNDED
+
+
+def _chrome_border() -> str:
+    return nerv.ORANGE_DIM if nerv_theme() else "dim"
 
 
 BANNER = f"""[bold {ACCENT}]
@@ -100,6 +158,10 @@ HELP_TEXT = f"""[bold]commands[/bold]
   round 2+   they read each other, argue, verdicts can shift
              consensus or 3 rounds max
 
+[bold]display[/bold]
+  [{ACCENT}]MAGI_THEME=classic[/{ACCENT}]     the older muted panels instead of the console
+  [{ACCENT}]MAGI_SOUND=0[/{ACCENT}]           silence the console tones
+
 [bold]outcomes[/bold]
   [#8abf7a]CONSENSUS[/#8abf7a]   all agree, clean answer
   [#c4a35a]DEADLOCK[/#c4a35a]    could not agree, your call
@@ -107,16 +169,25 @@ HELP_TEXT = f"""[bold]commands[/bold]
 
 
 def print_banner(console: Console, models: dict[str, str]) -> None:
-    console.print(BANNER)
-    parts = Text("    ")
-    for name in ("MELCHIOR", "BALTHASAR", "CASPER"):
-        if name != "MELCHIOR":
-            parts.append("  ·  ", style="dim")
-        parts.append(f"{_mi(name)} ", style=f"bold {_mc(name)}")
-        parts.append(name, style=f"bold {_mc(name)}")
-        parts.append(f" [{models.get(name, '?')}]", style="dim")
-    console.print(parts)
-    console.print(f"    [dim]the council convenes[/dim]  [{ACCENT}]/help[/{ACCENT}] [dim]for commands[/dim]\n")
+    if not nerv_theme():
+        console.print(BANNER)
+        parts = Text("    ")
+        for name in ("MELCHIOR", "BALTHASAR", "CASPER"):
+            if name != "MELCHIOR":
+                parts.append("  ·  ", style="dim")
+            parts.append(f"{_mi(name)} ", style=f"bold {_mc(name)}")
+            parts.append(name, style=f"bold {_mc(name)}")
+            parts.append(f" [{models.get(name, '?')}]", style="dim")
+        console.print(parts)
+        console.print(f"    [dim]the council convenes[/dim]  [{ACCENT}]/help[/{ACCENT}] [dim]for commands[/dim]\n")
+        return
+
+    from magi import __version__
+    sound.play("boot")
+    console.print()
+    console.print(nerv.boot(models, __version__))
+    console.print()
+    console.print(f"  [{nerv.STEEL}]/help for commands  ·  a question convenes the council[/{nerv.STEEL}]\n")
 
 
 def print_models(console: Console, models: dict[str, str]) -> None:
@@ -126,7 +197,7 @@ def print_models(console: Console, models: dict[str, str]) -> None:
             text.append(f"  {_mi(name)} ", style=f"bold {_mc(name)}")
             text.append(f"{name:<10}", style=f"bold {_mc(name)}")
             text.append(f"  {models[name]}\n", style="dim")
-    console.print(Panel(text, title=f"[bold {ACCENT}]models[/bold {ACCENT}]", border_style="dim", box=ROUNDED))
+    console.print(Panel(text, title=f"[bold {ACCENT}]models[/bold {ACCENT}]", border_style=_chrome_border(), box=_chrome_box()))
 
 
 def _sanitize_error(exc: Exception) -> str:
@@ -143,6 +214,10 @@ def _verdict_badge(verdict: Verdict) -> Text:
 
 
 def _member_tag(name: str) -> str:
+    if nerv_theme():
+        unit = nerv.UNIT_NUMBER.get(name)
+        label = f"{name} · {unit}" if unit else name
+        return f"[bold black on {_mc(name)}] {label} [/bold black on {_mc(name)}]"
     return f"[bold {_mc(name)}]{_mi(name)} {name}[/bold {_mc(name)}]"
 
 
@@ -154,7 +229,15 @@ def _round_rule(console: Console, round_num: int, label: str) -> None:
 
 # Decision mode
 
-def vote_status_panel(statuses: dict[str, str], results: dict) -> Panel:
+def _phase_plate(phase: str) -> str:
+    return {
+        "vote": nerv.PLATE_THINKING,
+        "choice": nerv.PLATE_SELECT,
+        "recommend": nerv.PLATE_PROPOSE,
+    }.get(phase, nerv.PLATE_THINKING)
+
+
+def _classic_status(statuses: dict[str, str], results: dict, title: str, done_color) -> Panel:
     text = Text()
     for name in statuses:
         result = results.get(name)
@@ -163,27 +246,29 @@ def vote_status_panel(statuses: dict[str, str], results: dict) -> Panel:
         elif isinstance(result, Exception):
             mark, style = "✗", "red"
         else:
-            mark, style = "●", VERDICT_COLOR[result.verdict]
+            mark, style = "●", done_color(result)
         text.append(f"  {mark} ", style=f"bold {style}")
         text.append(f"{name:<10} ", style=f"{_mc(name)}")
         text.append(f" {statuses[name]}\n", style="dim")
-    return Panel(text, title=f"[bold {ACCENT}]voting[/bold {ACCENT}]", border_style=ACCENT, box=SIMPLE)
+    return Panel(text, title=f"[bold {ACCENT}]{title}[/bold {ACCENT}]", border_style=ACCENT, box=SIMPLE)
 
 
-def debate_status_panel(statuses: dict[str, str], rebuttals: dict, round_num: int) -> Panel:
-    text = Text()
-    for name in statuses:
-        result = rebuttals.get(name)
-        if result is None:
-            mark, style = "◌", "dim"
-        elif isinstance(result, Exception):
-            mark, style = "✗", "red"
-        else:
-            mark, style = "●", VERDICT_COLOR[result.final_verdict]
-        text.append(f"  {mark} ", style=f"bold {style}")
-        text.append(f"{name:<10} ", style=f"{_mc(name)}")
-        text.append(f" {statuses[name]}\n", style="dim")
-    return Panel(text, title=f"[bold {ACCENT}]round {round_num}[/bold {ACCENT}]", border_style=ACCENT, box=SIMPLE)
+def _display(models: dict[str, str], results: dict, header: str, mode: str):
+    return nerv.magi_display(models, results, header=header,
+                             phase_plate=_phase_plate(mode), mode=mode)
+
+
+def vote_status_panel(models, statuses: dict[str, str], results: dict):
+    if nerv_theme():
+        return _display(models, results, nerv.PLATE_THINKING, "vote")
+    return _classic_status(statuses, results, "voting", lambda r: VERDICT_COLOR[r.verdict])
+
+
+def debate_status_panel(models, statuses: dict[str, str], rebuttals: dict, round_num: int):
+    if nerv_theme():
+        return _display(models, rebuttals, f"第 {round_num} 回", "vote")
+    return _classic_status(statuses, rebuttals, f"round {round_num}",
+                           lambda r: VERDICT_COLOR[r.final_verdict])
 
 
 def _conviction(level: int | None) -> str:
@@ -205,9 +290,9 @@ def _append_finding(body: Text, name: str, result) -> None:
 def _persona_panel(name: str, result: PersonaResponse | Exception) -> Panel:
     if isinstance(result, Exception):
         body = Text(f"  ✗ {_sanitize_error(result)}", style="red")
-        return Panel(body, title=_member_tag(name), border_style="red", box=HEAVY)
+        return Panel(body, title=_member_tag(name), border_style="red", box=_box())
 
-    color = VERDICT_COLOR[result.verdict]
+    color = _vc(result.verdict)
     body = Text()
     body.append(f"  {VERDICT_ICON[result.verdict]} ", style=f"bold {color}")
     body.append(f"{result.verdict.value}", style=f"bold {color}")
@@ -218,7 +303,7 @@ def _persona_panel(name: str, result: PersonaResponse | Exception) -> Panel:
         body.append("\n\n")
         body.append("  ONLY IF: ", style=f"bold {color}")
         body.append(result.condition)
-    return Panel(body, title=_member_tag(name), border_style=_mc(name), box=HEAVY, padding=(0, 1))
+    return Panel(body, title=_member_tag(name), border_style=_mc(name), box=_box(), padding=(0, 1))
 
 
 def _debate_panel(
@@ -229,13 +314,13 @@ def _debate_panel(
 ) -> Panel:
     if isinstance(rebuttal, Exception):
         body = Text(f"  ✗ {_sanitize_error(rebuttal)}", style="red")
-        return Panel(body, title=_member_tag(name), border_style="red", box=HEAVY)
+        return Panel(body, title=_member_tag(name), border_style="red", box=_box())
 
     if rebuttal is None:
         body = Text("  (silent this round)", style="dim")
         return Panel(body, title=_member_tag(name), border_style="dim", box=SIMPLE)
 
-    color = VERDICT_COLOR[rebuttal.final_verdict]
+    color = _vc(rebuttal.final_verdict)
     body = Text()
     body.append(f"  {rebuttal.response}\n\n")
     body.append(f"  {VERDICT_ICON[rebuttal.final_verdict]} ", style=f"bold {color}")
@@ -247,7 +332,7 @@ def _debate_panel(
     if rebuttal.final_verdict == Verdict.CONDITIONAL and rebuttal.condition:
         body.append("\n  ONLY IF: ", style=f"bold {color}")
         body.append(rebuttal.condition)
-    return Panel(body, title=_member_tag(name), subtitle=f"[dim]round {round_num}[/dim]", border_style=_mc(name), box=HEAVY, padding=(0, 1))
+    return Panel(body, title=_member_tag(name), subtitle=f"[dim]round {round_num}[/dim]", border_style=_mc(name), box=_box(), padding=(0, 1))
 
 
 def render_initial_votes(votes: dict, console: Console) -> None:
@@ -277,57 +362,85 @@ OUTCOME_STYLE = {
 }
 
 
-def render_synthesis(synthesis: str, outcome: str, console: Console) -> None:
-    color, icon = OUTCOME_STYLE.get(outcome, ("red", "✗"))
+# What the display shows when the council lands. The kanji is the verdict, the
+# Latin line underneath is what the user actually asked about.
+OUTCOME_PLATE = {
+    "consensus": (nerv.PLATE_ACCEPT, nerv.GREEN, "全 会 一 致"),
+    "picks": (nerv.PLATE_ACCEPT, nerv.GREEN, "全 会 一 致"),
+    "majority": (nerv.PLATE_ACCEPT, nerv.ORANGE, "多 数 決"),
+    "conviction": (nerv.PLATE_CONDITIONAL, nerv.ORANGE, "確 信 度"),
+    "tiebreak": (nerv.PLATE_CONDITIONAL, nerv.RED, "決 選"),
+    "deadlock": (nerv.PLATE_CONDITIONAL, nerv.RED, "決 選"),
+    "split": (nerv.PLATE_CONDITIONAL, nerv.RED, "決 選"),
+    "incomplete": (nerv.PLATE_ERROR, nerv.RED, "応 答 な し"),
+}
 
+
+# The synthesis line is "{OUTCOME} — {WORD}  ({tally})". Read the word back out
+# of it rather than guessing from a substring: " NO" also matches "NOT".
+_WORD_PLATE = {
+    "YES": nerv.PLATE_ACCEPT,
+    "NO": nerv.PLATE_REJECT,
+    "ONLY IF": nerv.PLATE_CONDITIONAL,
+}
+
+_DECIDED = re.compile(
+    r"^(?:CONSENSUS|MAJORITY|CALL)\s*[\u2014-]\s*(" + "|".join(_WORD_PLATE) + r")(?:\s|$)",
+    re.IGNORECASE,
+)
+
+
+def _decided_word(synthesis: str) -> str | None:
+    match = _DECIDED.match(synthesis.strip())
+    return match.group(1).upper() if match else None
+
+
+def render_synthesis(synthesis: str, outcome: str, console: Console) -> None:
+    sound.play_outcome(outcome)
+
+    if not nerv_theme():
+        color, icon = OUTCOME_STYLE.get(outcome, ("red", "✗"))
+        console.print()
+        console.print(Rule(style=color))
+        result_text = Text(justify="center")
+        result_text.append(f"\n  {icon}  ", style=f"bold {color}")
+        result_text.append(synthesis, style=f"bold {color}")
+        result_text.append(f"  {icon}  \n", style=f"bold {color}")
+        console.print(result_text)
+        console.print(Rule(style=color))
+        return
+
+    plate, color, sub = OUTCOME_PLATE.get(outcome, (nerv.PLATE_CONDITIONAL, nerv.ORANGE, ""))
+    # The outcome says HOW the council decided; the plate must say WHAT it
+    # decided, so a unanimous NO reads 否決 rather than 可決.
+    word = _decided_word(synthesis)
+    if word is not None and outcome not in ("incomplete",):
+        plate = _WORD_PLATE[word]
+        if word == "NO":
+            color = nerv.RED
     console.print()
-    console.print(Rule(style=color))
-    result_text = Text(justify="center")
-    result_text.append(f"\n  {icon}  ", style=f"bold {color}")
-    result_text.append(synthesis, style=f"bold {color}")
-    result_text.append(f"  {icon}  \n", style=f"bold {color}")
-    console.print(result_text)
-    console.print(Rule(style=color))
+    console.print(nerv.stamp(synthesis, plate, color, sub))
+    console.print()
 
 
 # Choice mode
 
-def choice_vote_status_panel(statuses: dict[str, str], results: dict) -> Panel:
-    text = Text()
-    for name in statuses:
-        result = results.get(name)
-        if result is None:
-            mark, style = "◌", "dim"
-        elif isinstance(result, Exception):
-            mark, style = "✗", "red"
-        else:
-            mark, style = "●", CHOICE_COLOR
-        text.append(f"  {mark} ", style=f"bold {style}")
-        text.append(f"{name:<10} ", style=f"{_mc(name)}")
-        text.append(f" {statuses[name]}\n", style="dim")
-    return Panel(text, title=f"[bold {ACCENT}]picking[/bold {ACCENT}]", border_style=ACCENT, box=SIMPLE)
+def choice_vote_status_panel(models, statuses: dict[str, str], results: dict):
+    if nerv_theme():
+        return _display(models, results, nerv.PLATE_SELECT, "choice")
+    return _classic_status(statuses, results, "picking", lambda r: CHOICE_COLOR)
 
 
-def choice_debate_status_panel(statuses: dict[str, str], rebuttals: dict, round_num: int) -> Panel:
-    text = Text()
-    for name in statuses:
-        result = rebuttals.get(name)
-        if result is None:
-            mark, style = "◌", "dim"
-        elif isinstance(result, Exception):
-            mark, style = "✗", "red"
-        else:
-            mark, style = "●", CHOICE_COLOR
-        text.append(f"  {mark} ", style=f"bold {style}")
-        text.append(f"{name:<10} ", style=f"{_mc(name)}")
-        text.append(f" {statuses[name]}\n", style="dim")
-    return Panel(text, title=f"[bold {ACCENT}]round {round_num}[/bold {ACCENT}]", border_style=ACCENT, box=SIMPLE)
+def choice_debate_status_panel(models, statuses: dict[str, str], rebuttals: dict, round_num: int):
+    if nerv_theme():
+        return _display(models, rebuttals, f"第 {round_num} 回", "choice")
+    return _classic_status(statuses, rebuttals, f"round {round_num}", lambda r: CHOICE_COLOR)
 
 
 def _choice_panel(name: str, result: ChoiceResponse | Exception) -> Panel:
     if isinstance(result, Exception):
         body = Text(f"  ✗ {_sanitize_error(result)}", style="red")
-        return Panel(body, title=_member_tag(name), border_style="red", box=HEAVY)
+        return Panel(body, title=_member_tag(name), border_style="red", box=_box())
 
     body = Text()
     body.append("  ▌ ", style=f"bold {CHOICE_COLOR}")
@@ -335,7 +448,7 @@ def _choice_panel(name: str, result: ChoiceResponse | Exception) -> Panel:
     body.append(f"   {_conviction(result.confidence)}\n\n", style="dim")
     body.append(f"  {result.reasoning}")
     _append_finding(body, name, result)
-    return Panel(body, title=_member_tag(name), border_style=_mc(name), box=HEAVY, padding=(0, 1))
+    return Panel(body, title=_member_tag(name), border_style=_mc(name), box=_box(), padding=(0, 1))
 
 
 def _choice_debate_panel(
@@ -346,7 +459,7 @@ def _choice_debate_panel(
 ) -> Panel:
     if isinstance(rebuttal, Exception):
         body = Text(f"  ✗ {_sanitize_error(rebuttal)}", style="red")
-        return Panel(body, title=_member_tag(name), border_style="red", box=HEAVY)
+        return Panel(body, title=_member_tag(name), border_style="red", box=_box())
 
     if rebuttal is None:
         body = Text("  (silent this round)", style="dim")
@@ -360,7 +473,7 @@ def _choice_debate_panel(
         body.append(f"  ← was {previous_choice}", style="bold yellow")
     elif previous_choice is not None:
         body.append("  (held)", style="dim")
-    return Panel(body, title=_member_tag(name), subtitle=f"[dim]round {round_num}[/dim]", border_style=_mc(name), box=HEAVY, padding=(0, 1))
+    return Panel(body, title=_member_tag(name), subtitle=f"[dim]round {round_num}[/dim]", border_style=_mc(name), box=_box(), padding=(0, 1))
 
 
 def render_initial_choices(choices: dict, console: Console) -> None:
@@ -392,48 +505,28 @@ def render_intake(question_class: str, options: list[str], console: Console) -> 
 
 # Recommend mode
 
-def recommend_vote_status_panel(statuses: dict[str, str], results: dict) -> Panel:
-    text = Text()
-    for name in statuses:
-        result = results.get(name)
-        if result is None:
-            mark, style = "◌", "dim"
-        elif isinstance(result, Exception):
-            mark, style = "✗", "red"
-        else:
-            mark, style = "●", RECOMMEND_COLOR
-        text.append(f"  {mark} ", style=f"bold {style}")
-        text.append(f"{name:<10} ", style=f"{_mc(name)}")
-        text.append(f" {statuses[name]}\n", style="dim")
-    return Panel(text, title=f"[bold {ACCENT}]recommending[/bold {ACCENT}]", border_style=ACCENT, box=SIMPLE)
+def recommend_vote_status_panel(models, statuses: dict[str, str], results: dict):
+    if nerv_theme():
+        return _display(models, results, nerv.PLATE_PROPOSE, "recommend")
+    return _classic_status(statuses, results, "recommending", lambda r: RECOMMEND_COLOR)
 
 
-def recommend_debate_status_panel(statuses: dict[str, str], rebuttals: dict, round_num: int) -> Panel:
-    text = Text()
-    for name in statuses:
-        result = rebuttals.get(name)
-        if result is None:
-            mark, style = "◌", "dim"
-        elif isinstance(result, Exception):
-            mark, style = "✗", "red"
-        else:
-            mark, style = "●", RECOMMEND_COLOR
-        text.append(f"  {mark} ", style=f"bold {style}")
-        text.append(f"{name:<10} ", style=f"{_mc(name)}")
-        text.append(f" {statuses[name]}\n", style="dim")
-    return Panel(text, title=f"[bold {ACCENT}]round {round_num}[/bold {ACCENT}]", border_style=ACCENT, box=SIMPLE)
+def recommend_debate_status_panel(models, statuses: dict[str, str], rebuttals: dict, round_num: int):
+    if nerv_theme():
+        return _display(models, rebuttals, f"第 {round_num} 回", "recommend")
+    return _classic_status(statuses, rebuttals, f"round {round_num}", lambda r: RECOMMEND_COLOR)
 
 
 def _recommend_panel(name: str, result: RecommendResponse | Exception) -> Panel:
     if isinstance(result, Exception):
         body = Text(f"  ✗ {_sanitize_error(result)}", style="red")
-        return Panel(body, title=_member_tag(name), border_style="red", box=HEAVY)
+        return Panel(body, title=_member_tag(name), border_style="red", box=_box())
 
     body = Text()
     body.append("  ▌ ", style=f"bold {RECOMMEND_COLOR}")
     body.append(f"{result.recommendation}\n\n", style=f"bold {RECOMMEND_COLOR}")
     body.append(f"  {result.reasoning}")
-    return Panel(body, title=_member_tag(name), border_style=_mc(name), box=HEAVY, padding=(0, 1))
+    return Panel(body, title=_member_tag(name), border_style=_mc(name), box=_box(), padding=(0, 1))
 
 
 def _recommend_debate_panel(
@@ -444,7 +537,7 @@ def _recommend_debate_panel(
 ) -> Panel:
     if isinstance(rebuttal, Exception):
         body = Text(f"  ✗ {_sanitize_error(rebuttal)}", style="red")
-        return Panel(body, title=_member_tag(name), border_style="red", box=HEAVY)
+        return Panel(body, title=_member_tag(name), border_style="red", box=_box())
 
     if rebuttal is None:
         body = Text("  (silent this round)", style="dim")
@@ -458,7 +551,7 @@ def _recommend_debate_panel(
         body.append(f"\n  ← was: {previous_rec}", style="bold yellow")
     elif previous_rec is not None:
         body.append("  (held)", style="dim")
-    return Panel(body, title=_member_tag(name), subtitle=f"[dim]round {round_num}[/dim]", border_style=_mc(name), box=HEAVY, padding=(0, 1))
+    return Panel(body, title=_member_tag(name), subtitle=f"[dim]round {round_num}[/dim]", border_style=_mc(name), box=_box(), padding=(0, 1))
 
 
 def render_initial_recommendations(recs: dict, console: Console) -> None:
@@ -478,11 +571,29 @@ def render_recommend_debate_round(
 
 
 def print_help(console: Console) -> None:
-    console.print(Panel(HELP_TEXT, border_style="dim", box=ROUNDED))
+    console.print(Panel(HELP_TEXT, border_style=_chrome_border(), box=_chrome_box()))
 
 
-def warmup_status_panel(statuses: dict[str, tuple[str, str]]) -> Panel:
+class _Ready:
+    """A warmed seat. The display keys off attributes, and a ready unit has no
+    verdict yet, so it needs an object that is neither None nor an Exception."""
+
+    recommendation = "READY"
+
+
+def warmup_status_panel(statuses: dict[str, tuple[str, str]]):
     """statuses[name] = (model_id, state). state ∈ {'loading', 'ready', 'failed: ...'}."""
+    if nerv_theme():
+        models = {name: model for name, (model, _) in statuses.items()}
+        cells: dict = {}
+        for name, (_model, state) in statuses.items():
+            if state == "ready":
+                cells[name] = _Ready()
+            elif state != "loading":
+                cells[name] = RuntimeError(state)
+        return nerv.magi_display(models, cells, "起 動 中",
+                                 phase_plate=nerv.PLATE_STANDBY, mode="boot")
+
     text = Text()
     for name, (model, state) in statuses.items():
         if state == "ready":
@@ -529,7 +640,7 @@ def render_journal(entries: list[dict], console: Console) -> None:
         if entry.get("user_outcome"):
             text.append(f"    ↳ {entry['user_outcome']}\n", style="#8abf7a")
         text.append("\n")
-    console.print(Panel(text, title=f"[bold {ACCENT}]journal[/bold {ACCENT}]", border_style="dim", box=ROUNDED))
+    console.print(Panel(text, title=f"[bold {ACCENT}]journal[/bold {ACCENT}]", border_style=_chrome_border(), box=_chrome_box()))
 
 
 def render_stats(entries: list[dict], console: Console) -> None:
@@ -575,7 +686,7 @@ def render_stats(entries: list[dict], console: Console) -> None:
     text.append(f"  avg rounds  {avg_rounds:.1f}\n", style="dim")
     text.append(f"  recorded    {outcomes_recorded}/{total}\n", style="dim")
 
-    console.print(Panel(text, title=f"[bold {ACCENT}]stats[/bold {ACCENT}]", border_style="dim", box=ROUNDED))
+    console.print(Panel(text, title=f"[bold {ACCENT}]stats[/bold {ACCENT}]", border_style=_chrome_border(), box=_chrome_box()))
 
     close = [e for e in entries if e.get("outcome") in ("deadlock", "split", "conviction", "tiebreak")]
     if len(close) >= 3:
@@ -584,7 +695,7 @@ def render_stats(entries: list[dict], console: Console) -> None:
             ts = e.get("timestamp", "")[:10]
             text2.append(f"  {ts}  ", style="dim")
             text2.append(f"{e.get('question', '')[:80]}\n", style="italic")
-        console.print(Panel(text2, title="[bold #c4a35a]the ones that split the council[/bold #c4a35a]", border_style="#c4a35a", box=ROUNDED))
+        console.print(Panel(text2, title="[bold #c4a35a]the ones that split the council[/bold #c4a35a]", border_style="#c4a35a", box=_chrome_box()))
 
 
 def render_memory_hits(hits: list, console: Console) -> None:
@@ -598,7 +709,7 @@ def render_memory_hits(hits: list, console: Console) -> None:
         text.append(f"  → {h.outcome}\n", style="dim")
         if h.user_outcome:
             text.append(f"    ↳ you said: \"{h.user_outcome}\"\n", style=f"{ACCENT}")
-    console.print(Panel(text, title=f"[bold {ACCENT}]you've asked this before[/bold {ACCENT}]", border_style="dim", box=ROUNDED))
+    console.print(Panel(text, title=f"[bold {ACCENT}]you've asked this before[/bold {ACCENT}]", border_style=_chrome_border(), box=_chrome_box()))
 
 
 def render_patterns(patterns, console: Console) -> None:

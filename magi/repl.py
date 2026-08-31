@@ -4,7 +4,7 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
 
-from magi import journal
+from magi import journal, sound
 from magi.core import (
     DEFAULT_MODELS,
     ChoiceRebuttal,
@@ -338,7 +338,7 @@ async def _run_decision_flow(
     final_positions: dict = {}
 
     vote_statuses = {name: f"voting  [{models[name]}]" for name in models}
-    live: Live | None = Live(vote_status_panel(vote_statuses, initial_votes), console=console, refresh_per_second=8)
+    live: Live | None = Live(vote_status_panel(models, vote_statuses, initial_votes), console=console, refresh_per_second=8)
     live.__enter__()
 
     debate_statuses: dict[str, str] = {}
@@ -382,7 +382,7 @@ async def _run_decision_flow(
                     if isinstance(initial_votes[name], PersonaResponse)
                 }
                 live = Live(
-                    debate_status_panel(debate_statuses, round_rebuttals[round_num], round_num),
+                    debate_status_panel(models, debate_statuses, round_rebuttals[round_num], round_num),
                     console=console,
                     refresh_per_second=8,
                 )
@@ -391,24 +391,27 @@ async def _run_decision_flow(
             elif kind == "vote":
                 _, name, payload = event
                 initial_votes[name] = payload
+                sound.play("error" if isinstance(payload, Exception) else "report")
                 if isinstance(payload, Exception):
                     vote_statuses[name] = f"failed: {type(payload).__name__}"
                 else:
                     vote_statuses[name] = f"{payload.verdict.value}  [{models[name]}]"
                 if live is not None:
-                    live.update(vote_status_panel(vote_statuses, initial_votes))
+                    live.update(vote_status_panel(models, vote_statuses, initial_votes))
 
             elif kind == "revote":
+                sound.play("revote")
                 # This member restated somebody else's argument and was sent
                 # back to find the one only their lens produces.
                 _, name, payload = event
                 initial_votes[name] = payload
                 vote_statuses[name] = f"{payload.verdict.value}  ↻ own lens  [{models[name]}]"
                 if live is not None:
-                    live.update(vote_status_panel(vote_statuses, initial_votes))
+                    live.update(vote_status_panel(models, vote_statuses, initial_votes))
 
             elif kind == "rebuttal":
                 _, name, payload = event
+                sound.play("error" if isinstance(payload, Exception) else "report")
                 round_rebuttals[debate_round_num][name] = payload
                 if isinstance(payload, Exception):
                     debate_statuses[name] = f"failed: {type(payload).__name__}"
@@ -421,7 +424,7 @@ async def _run_decision_flow(
                     arrow = "→" if prev == payload.final_verdict else "⇒"
                     debate_statuses[name] = f"{arrow} {payload.final_verdict.value}  [{models[name]}]"
                 if live is not None:
-                    live.update(debate_status_panel(debate_statuses, round_rebuttals[debate_round_num], debate_round_num))
+                    live.update(debate_status_panel(models, debate_statuses, round_rebuttals[debate_round_num], debate_round_num))
 
             elif kind == "done":
                 _, outcome, positions = event
@@ -467,7 +470,7 @@ async def _run_choice_flow(
     final_positions: dict = {}
 
     vote_statuses = {name: f"picking  [{models[name]}]" for name in models}
-    live: Live | None = Live(choice_vote_status_panel(vote_statuses, initial_votes), console=console, refresh_per_second=8)
+    live: Live | None = Live(choice_vote_status_panel(models, vote_statuses, initial_votes), console=console, refresh_per_second=8)
     live.__enter__()
 
     debate_statuses: dict[str, str] = {}
@@ -511,7 +514,7 @@ async def _run_choice_flow(
                     if isinstance(initial_votes[name], ChoiceResponse)
                 }
                 live = Live(
-                    choice_debate_status_panel(debate_statuses, round_rebuttals[round_num], round_num),
+                    choice_debate_status_panel(models, debate_statuses, round_rebuttals[round_num], round_num),
                     console=console,
                     refresh_per_second=8,
                 )
@@ -520,23 +523,26 @@ async def _run_choice_flow(
             elif kind == "vote":
                 _, name, payload = event
                 initial_votes[name] = payload
+                sound.play("error" if isinstance(payload, Exception) else "report")
                 if isinstance(payload, Exception):
                     vote_statuses[name] = f"failed: {type(payload).__name__}"
                 else:
                     vote_statuses[name] = f"{payload.chosen_option}  [{models[name]}]"
                 if live is not None:
-                    live.update(choice_vote_status_panel(vote_statuses, initial_votes))
+                    live.update(choice_vote_status_panel(models, vote_statuses, initial_votes))
 
             elif kind == "revote":
+                sound.play("revote")
                 # Sent back for restating another member's reasoning.
                 _, name, payload = event
                 initial_votes[name] = payload
                 vote_statuses[name] = f"{payload.chosen_option}  ↻ own lens  [{models[name]}]"
                 if live is not None:
-                    live.update(choice_vote_status_panel(vote_statuses, initial_votes))
+                    live.update(choice_vote_status_panel(models, vote_statuses, initial_votes))
 
             elif kind == "rebuttal":
                 _, name, payload = event
+                sound.play("error" if isinstance(payload, Exception) else "report")
                 round_rebuttals[debate_round_num][name] = payload
                 if isinstance(payload, Exception):
                     debate_statuses[name] = f"failed: {type(payload).__name__}"
@@ -549,7 +555,7 @@ async def _run_choice_flow(
                     arrow = "→" if prev == payload.final_choice else "⇒"
                     debate_statuses[name] = f"{arrow} {payload.final_choice}  [{models[name]}]"
                 if live is not None:
-                    live.update(choice_debate_status_panel(debate_statuses, round_rebuttals[debate_round_num], debate_round_num))
+                    live.update(choice_debate_status_panel(models, debate_statuses, round_rebuttals[debate_round_num], debate_round_num))
 
             elif kind == "done":
                 _, outcome, positions = event
@@ -594,7 +600,7 @@ async def _run_recommend_flow(
     final_positions: dict = {}
 
     vote_statuses = {name: f"recommending  [{models[name]}]" for name in models}
-    live: Live | None = Live(recommend_vote_status_panel(vote_statuses, initial_votes), console=console, refresh_per_second=8)
+    live: Live | None = Live(recommend_vote_status_panel(models, vote_statuses, initial_votes), console=console, refresh_per_second=8)
     live.__enter__()
 
     debate_statuses: dict[str, str] = {}
@@ -638,7 +644,7 @@ async def _run_recommend_flow(
                     if isinstance(initial_votes[name], RecommendResponse)
                 }
                 live = Live(
-                    recommend_debate_status_panel(debate_statuses, round_rebuttals[round_num], round_num),
+                    recommend_debate_status_panel(models, debate_statuses, round_rebuttals[round_num], round_num),
                     console=console,
                     refresh_per_second=8,
                 )
@@ -647,16 +653,18 @@ async def _run_recommend_flow(
             elif kind == "vote":
                 _, name, payload = event
                 initial_votes[name] = payload
+                sound.play("error" if isinstance(payload, Exception) else "report")
                 if isinstance(payload, Exception):
                     vote_statuses[name] = f"failed: {type(payload).__name__}"
                 else:
                     short = payload.recommendation if len(payload.recommendation) <= 60 else payload.recommendation[:57] + "..."
                     vote_statuses[name] = f"{short}  [{models[name]}]"
                 if live is not None:
-                    live.update(recommend_vote_status_panel(vote_statuses, initial_votes))
+                    live.update(recommend_vote_status_panel(models, vote_statuses, initial_votes))
 
             elif kind == "rebuttal":
                 _, name, payload = event
+                sound.play("error" if isinstance(payload, Exception) else "report")
                 round_rebuttals[debate_round_num][name] = payload
                 if isinstance(payload, Exception):
                     debate_statuses[name] = f"failed: {type(payload).__name__}"
@@ -666,7 +674,7 @@ async def _run_recommend_flow(
                     short = payload.final_recommendation if len(payload.final_recommendation) <= 50 else payload.final_recommendation[:47] + "..."
                     debate_statuses[name] = f"{arrow} {short}  [{models[name]}]"
                 if live is not None:
-                    live.update(recommend_debate_status_panel(debate_statuses, round_rebuttals[debate_round_num], debate_round_num))
+                    live.update(recommend_debate_status_panel(models, debate_statuses, round_rebuttals[debate_round_num], debate_round_num))
 
             elif kind == "done":
                 _, outcome, positions = event

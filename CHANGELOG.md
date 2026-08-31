@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.14.0: the console
+
+The interface was a set of tastefully muted panels that could have belonged to
+any CLI. It is now the display from the show.
+
+**Three units in the triangle.** MELCHIOR-1 and BALTHASAR-2 on top, CASPER-3
+below, dropped into a shared bus. Each unit carries a kanji plate instead of a
+word: 審 議 中 while it deliberates, then 可 決, 否 決 or 条 件 付. A unit that
+fails to answer reads 応 答 な し. The plate updates live as each member reports,
+so you watch the council fill in.
+
+**A decision lands as a stamp**, not as coloured text: a filled plate with the
+verdict punched out of it in black, the way the display does it. Unanimity,
+a majority and a tiebreak each get their own colour and their own second line
+(全 会 一 致, 多 数 決, 決 選).
+
+**Sound.** Cues are synthesised from arithmetic on first run and cached in
+`~/.config/magi/sounds/`. Nothing is sampled from the show: that audio is
+Khara's and this is a public repo. A unit reporting in clicks, a member sent
+back to find its own argument clicks lower, a unanimous council resolves
+upward, and a tiebreak deliberately does not resolve. Playback is fire and
+forget through whatever the box has, so a machine with no audio tool is silent
+rather than broken, and nothing ever waits on a beep.
+
+**Two switches, both read at call time so they can be flipped mid-session:**
+`MAGI_SOUND=0` for silence and `MAGI_THEME=classic` for the old panels. The
+classic theme is the one to use on a terminal that cannot draw kanji.
+
+The frame is built on measured cell widths rather than string length, because
+kanji occupy two terminal cells and Latin one. Every state is asserted to hold
+its width, which caught a real tear: a BYOK seat named
+`groq/llama-3.3-70b-versatile` is wider than a unit panel and used to push the
+right-hand wall out on that one line.
+
+The personas were not touched. The display speaks the show's language; the
+council still argues in plain English and is still forbidden from cosplaying it.
+
 ## 0.13.2: the same code stopped disagreeing with itself
 
 Three runs of the unchanged 28-question suite returned 12, 13 and 17 fabricated

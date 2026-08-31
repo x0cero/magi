@@ -49,6 +49,28 @@ There is no outcome that hands the question back. Earlier versions reported any 
 
 CONDITIONAL verdicts still require a concrete blocker tied to your actual situation; vague hedges are coerced to ACCEPT.
 
+## The display
+
+The console is a copy of the MAGI display from the show, not an homage to it.
+Three units in the triangle, wired to a shared bus, each one showing a kanji
+plate rather than a word: 審 議 中 while it is thinking, then 可 決, 否 決 or
+条 件 付. The decision lands as a filled orange plate with the verdict punched
+out of it in black.
+
+The tones are synthesised from arithmetic the first time you run it and cached
+in `~/.config/magi/sounds/`. Nothing is sampled from the show, because that
+audio belongs to Khara and this is a public repo. A unit reporting in clicks, a
+unanimous council resolves upward, a tiebreak does not resolve at all.
+
+```bash
+MAGI_SOUND=0 magi           # silence
+MAGI_THEME=classic magi     # the older muted panels
+```
+
+Both are read fresh on every call, so you can flip them between questions. The
+classic theme is also the fallback worth using on a terminal that cannot draw
+kanji, since the frame is built on the assumption that they occupy two cells.
+
 ## Install
 
 One command. Handles Python, Ollama, models, everything:
