@@ -60,7 +60,15 @@ final class Council: ObservableObject {
     private var process: Process?
     private var task: Task<Void, Never>?
 
-    var isRunning: Bool { process != nil }
+    /// Published, not computed off `process`.
+    ///
+    /// This was `process != nil`, which meant the input re-enabled only if
+    /// something else published a change afterwards. It never did: the last
+    /// published change is the verdict, which lands while the process is still
+    /// alive, and clearing the process a moment later published nothing. So
+    /// the field stayed disabled after the first question and the app could
+    /// only be asked once per launch.
+    @Published private(set) var isRunning = false
 
     init() {
         loadRoster()
@@ -207,6 +215,7 @@ final class Council: ObservableObject {
         process.standardOutput = pipe
         process.standardError = Pipe()
         self.process = process
+        isRunning = true
 
         task = Task.detached { [weak self] in
             do {
@@ -241,6 +250,7 @@ final class Council: ObservableObject {
         task?.cancel()
         process = nil
         task = nil
+        isRunning = false
         if case .resolved = phase {} else { phase = .idle }
     }
 
@@ -348,11 +358,13 @@ final class Council: ObservableObject {
         phase = .failed(error)
         process = nil
         task = nil
+        isRunning = false
     }
 
     private func processEnded(code: Int32) {
         process = nil
         task = nil
+        isRunning = false
         if case .resolved = phase { return }
         if case .failed = phase { return }
         phase = code == 0 ? .idle : .failed("the engine exited with code \(code)")

@@ -22,6 +22,12 @@ struct ContentView: View {
         ZStack {
             Theme.void.ignoresSafeArea()
             Schematic().ignoresSafeArea()
+            // The CRT layer sits BEHIND the interface, not over it. Drawn on
+            // top it covered the entire window, and no combination of
+            // allowsHitTesting kept it from swallowing clicks once the view
+            // re-composited. Behind the content it costs almost nothing
+            // visually and cannot intercept anything.
+            ScreenGlass().ignoresSafeArea()
 
             VStack(spacing: 0) {
                 HeaderBar(council: council)
@@ -64,8 +70,6 @@ struct ContentView: View {
                 InputBar(draft: $draft, council: council, focused: $inputFocused)
             }
 
-            ScreenGlass()
-
             if stampShowing {
                 VerdictStamp(verdict: council.verdict,
                              units: council.units,
@@ -81,7 +85,15 @@ struct ContentView: View {
         }
         .frame(minWidth: 1000, minHeight: 840)
         .preferredColorScheme(.dark)
-        .onAppear { inputFocused = true }
+        .onAppear {
+            // Same deferral as after an answer: focus set during the first
+            // layout pass lands on a field that is still being built, and the
+            // first characters typed go nowhere.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                inputFocused = true
+            }
+        }
         .onChange(of: council.transcript.count) { _, count in
             if count > 0 { audio.play(.report) }
         }
@@ -91,12 +103,29 @@ struct ContentView: View {
                 audio.play(.boot)
             case .resolved:
                 audio.playOutcome(council.outcome)
+                // Nothing was decided, so nothing gets stamped across the
+                // screen. A full-screen verdict for "hello" reads as an error.
+                guard council.outcome != "noise" else { break }
                 withAnimation(.easeOut(duration: 0.2)) { stampShowing = true }
                 scheduleStampDismiss()
             case .failed:
                 audio.play(.error)
             default:
                 break
+            }
+            // Whatever the outcome, the next question should be typeable
+            // without hunting for the field. Deferred by one turn of the run
+            // loop: setting focus inside the same update that rebuilds the
+            // bar does not stick, because the field it points at is being
+            // replaced as the assignment happens.
+            switch phase {
+            case .warming, .deliberating:
+                break
+            default:
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 120_000_000)
+                    inputFocused = true
+                }
             }
         }
     }
@@ -288,6 +317,10 @@ private struct InputBar: View {
         .overlay(alignment: .top) {
             Rectangle().fill(Theme.orangeDim.opacity(0.5)).frame(height: 1)
         }
+        // The text line itself is 17 points tall, which is a nearly impossible
+        // click target. The whole bar takes the click and hands focus over.
+        .contentShape(Rectangle())
+        .onTapGesture { focused = true }
     }
 
     private func submit() {

@@ -68,6 +68,10 @@ enum Plain {
     /// of the engine's tally string. "MAJORITY — NO  (0A · 1C · 2R)" tells you
     /// nothing unless you already know what the letters mean.
     static func answer(units: [Council.Unit], outcome: String, fallback: String) -> String {
+        // "hello" is not a question and the engine says so. It should read as
+        // the machine shrugging, not as a failure.
+        if outcome == "noise" { return "THAT WASN'T A QUESTION" }
+
         let stances = units.compactMap { unit -> String? in
             guard let position = unit.position, !position.failed else { return nil }
             if let verdict = position.verdictKey { return verdictWord(verdict) }
@@ -109,7 +113,7 @@ enum Plain {
         case "conviction": return "it was even, so the strongest conviction won"
         case "tiebreak", "deadlock", "split": return "it was even, so the one who reads what you want decided"
         case "incomplete": return "not enough of them answered"
-        case "noise": return "that was not a question"
+        case "noise": return "ask me something you cannot decide"
         default: return ""
         }
     }
