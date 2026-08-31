@@ -142,22 +142,22 @@ final class Audio: ObservableObject {
         return buffer
     }
 
-    /// Short, high, and doubled. A held tone reads as a notification; a burst
-    /// of very short pips reads as a machine reporting. Kept in step with the
-    /// CLI's cues in magi/sound.py so both halves sound the same.
-    private func pip(_ freq: Double, _ seconds: Double = 0.032,
-                     _ volume: Double = 0.20, _ wave: Wave = .sine) -> [Double] {
-        tone(from: freq, to: freq, seconds: seconds, wave: wave, volume: volume)
-    }
-
-    private func burst(_ freqs: [Double], gap: Double = 0.028,
-                       seconds: Double = 0.032, volume: Double = 0.20) -> [Double] {
-        var out: [Double] = []
-        for (index, freq) in freqs.enumerated() {
-            if index > 0 { out += [Double](repeating: 0, count: Int(sampleRate * gap)) }
-            out += pip(freq, seconds, volume)
+    /// A tone chopped rapidly by an amplitude gate.
+    ///
+    /// This is the character the whole set is built on, chosen by ear over
+    /// three alternatives. The console does not beep, it buzzes: a held tone
+    /// gated around thirty times a second reads as a machine working, where a
+    /// clean pip reads as an app notification. Pitch and length carry the
+    /// meaning; the chopping stays constant so the cues are one machine.
+    ///
+    /// Kept in step with the CLI's set in magi/sound.py.
+    private func tremolo(_ freq: Double, _ seconds: Double, rate: Double,
+                         volume: Double = 0.15, wave: Wave = .square) -> [Double] {
+        let base = tone(from: freq, to: freq, seconds: seconds, wave: wave, volume: volume)
+        return base.enumerated().map { index, sample in
+            let gate = (Double(index) * rate / sampleRate).truncatingRemainder(dividingBy: 1) < 0.5
+            return gate ? sample : 0
         }
-        return out
     }
 
     private func silence(_ seconds: Double) -> [Double] {
@@ -167,28 +167,26 @@ final class Audio: ObservableObject {
     private func samples(for cue: Cue) -> [Double] {
         switch cue {
         case .boot:
-            return mix(tone(from: 120, to: 520, seconds: 0.62, wave: .saw, volume: 0.13),
-                       silence(0.30) + burst([1568, 1568, 2093], gap: 0.045,
-                                             seconds: 0.045, volume: 0.17))
-        case .report:
-            return burst([1760, 2093], gap: 0.030, seconds: 0.030, volume: 0.15)
-        case .consensus:
-            return burst([1046, 1319, 1568], gap: 0.038, seconds: 0.042, volume: 0.17)
-                + silence(0.02)
-                + mix(tone(from: 1568, to: 1568, seconds: 0.30, wave: .sine, volume: 0.16),
-                      tone(from: 2093, to: 2093, seconds: 0.30, wave: .sine, volume: 0.08))
-        case .majority:
-            return burst([1319, 1319], gap: 0.045, seconds: 0.045, volume: 0.17)
-                + silence(0.02)
-                + tone(from: 1319, to: 1319, seconds: 0.24, wave: .sine, volume: 0.15)
-        case .tiebreak:
-            // Steps down and stops: they split, so nothing resolves.
-            return burst([1175, 988], gap: 0.055, seconds: 0.055, volume: 0.16)
+            return tremolo(196, 0.42, rate: 24)
                 + silence(0.03)
-                + tone(from: 880, to: 880, seconds: 0.26, wave: .square, volume: 0.11)
+                + tremolo(392, 0.30, rate: 30)
+        case .report:
+            // Fires three times a round, so it has no tail.
+            return tremolo(440, 0.13, rate: 28)
+        case .consensus:
+            return tremolo(523, 0.20, rate: 30)
+                + tremolo(659, 0.20, rate: 30)
+                + tone(from: 784, to: 784, seconds: 0.34, wave: .square, volume: 0.12)
+        case .majority:
+            // Lands flat: nothing climbs, because somebody lost.
+            return tremolo(440, 0.22, rate: 28)
+                + tone(from: 440, to: 440, seconds: 0.26, wave: .square, volume: 0.12)
+        case .tiebreak:
+            // Steps down and stops without resolving.
+            return tremolo(415, 0.20, rate: 26)
+                + tremolo(311, 0.24, rate: 22, volume: 0.14)
         case .error:
-            return mix(tone(from: 220, to: 98, seconds: 0.34, wave: .saw, volume: 0.20),
-                       tone(from: 233, to: 104, seconds: 0.34, wave: .saw, volume: 0.12))
+            return tremolo(147, 0.40, rate: 16, volume: 0.19, wave: .saw)
         }
     }
 

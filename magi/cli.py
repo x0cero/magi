@@ -61,6 +61,33 @@ def cli(
 
         from magi import sound as _sound
 
+        # A plain word, not a flag: click parses anything leading with dashes
+        # as an option before this code ever sees it.
+        if "variants" in question:
+            if "stutter" in question:
+                click.echo("four stuttering characters. say which number.\n")
+                _sound.SOUND_DIR.mkdir(parents=True, exist_ok=True)
+                for label, samples in _sound.stutter_variants().items():
+                    scratch = _sound.SOUND_DIR / "_variant.wav"
+                    _sound._write(scratch, samples)
+                    click.echo(f"  {label}")
+                    _sound.play_path(scratch)
+                    _time.sleep(1.5)
+                (_sound.SOUND_DIR / "_variant.wav").unlink(missing_ok=True)
+                return
+            which = "verdict" if "verdict" in question else "report"
+            click.echo(f"four characters for the {which} cue. say which number.\n")
+            _sound.SOUND_DIR.mkdir(parents=True, exist_ok=True)
+            for label, samples in _sound.variants(which).items():
+                path = _sound.SOUND_DIR / "_variant.wav"
+                _sound._write(path, samples)
+                click.echo(f"  {label}")
+                _sound.play_path(path)
+                _time.sleep(1.4)
+            path = _sound.SOUND_DIR / "_variant.wav"
+            path.unlink(missing_ok=True)
+            return
+
         _sound.CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
         for name in _sound._build_names():
             generated = _sound.SOUND_DIR / f"{name}.wav"
