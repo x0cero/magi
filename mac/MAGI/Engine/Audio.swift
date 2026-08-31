@@ -142,25 +142,53 @@ final class Audio: ObservableObject {
         return buffer
     }
 
+    /// Short, high, and doubled. A held tone reads as a notification; a burst
+    /// of very short pips reads as a machine reporting. Kept in step with the
+    /// CLI's cues in magi/sound.py so both halves sound the same.
+    private func pip(_ freq: Double, _ seconds: Double = 0.032,
+                     _ volume: Double = 0.20, _ wave: Wave = .sine) -> [Double] {
+        tone(from: freq, to: freq, seconds: seconds, wave: wave, volume: volume)
+    }
+
+    private func burst(_ freqs: [Double], gap: Double = 0.028,
+                       seconds: Double = 0.032, volume: Double = 0.20) -> [Double] {
+        var out: [Double] = []
+        for (index, freq) in freqs.enumerated() {
+            if index > 0 { out += [Double](repeating: 0, count: Int(sampleRate * gap)) }
+            out += pip(freq, seconds, volume)
+        }
+        return out
+    }
+
+    private func silence(_ seconds: Double) -> [Double] {
+        [Double](repeating: 0, count: Int(sampleRate * seconds))
+    }
+
     private func samples(for cue: Cue) -> [Double] {
         switch cue {
         case .boot:
-            return tone(from: 180, to: 760, seconds: 0.5, wave: .saw, volume: 0.22)
-                + tone(from: 784, to: 784, seconds: 0.18, wave: .sine, volume: 0.26)
+            return mix(tone(from: 120, to: 520, seconds: 0.62, wave: .saw, volume: 0.13),
+                       silence(0.30) + burst([1568, 1568, 2093], gap: 0.045,
+                                             seconds: 0.045, volume: 0.17))
         case .report:
-            return tone(from: 1046, to: 1046, seconds: 0.05, wave: .square, volume: 0.15)
+            return burst([1760, 2093], gap: 0.030, seconds: 0.030, volume: 0.15)
         case .consensus:
-            return mix(tone(from: 523, to: 659, seconds: 0.42, wave: .sine, volume: 0.24),
-                       tone(from: 784, to: 988, seconds: 0.42, wave: .sine, volume: 0.14))
+            return burst([1046, 1319, 1568], gap: 0.038, seconds: 0.042, volume: 0.17)
+                + silence(0.02)
+                + mix(tone(from: 1568, to: 1568, seconds: 0.30, wave: .sine, volume: 0.16),
+                      tone(from: 2093, to: 2093, seconds: 0.30, wave: .sine, volume: 0.08))
         case .majority:
-            return mix(tone(from: 523, to: 523, seconds: 0.32, wave: .sine, volume: 0.22),
-                       tone(from: 698, to: 698, seconds: 0.32, wave: .sine, volume: 0.12))
+            return burst([1319, 1319], gap: 0.045, seconds: 0.045, volume: 0.17)
+                + silence(0.02)
+                + tone(from: 1319, to: 1319, seconds: 0.24, wave: .sine, volume: 0.15)
         case .tiebreak:
-            // Deliberately does not resolve: the council split.
-            return tone(from: 415, to: 415, seconds: 0.28, wave: .square, volume: 0.15)
-                + tone(from: 392, to: 392, seconds: 0.32, wave: .square, volume: 0.15)
+            // Steps down and stops: they split, so nothing resolves.
+            return burst([1175, 988], gap: 0.055, seconds: 0.055, volume: 0.16)
+                + silence(0.03)
+                + tone(from: 880, to: 880, seconds: 0.26, wave: .square, volume: 0.11)
         case .error:
-            return tone(from: 330, to: 110, seconds: 0.3, wave: .saw, volume: 0.22)
+            return mix(tone(from: 220, to: 98, seconds: 0.34, wave: .saw, volume: 0.20),
+                       tone(from: 233, to: 104, seconds: 0.34, wave: .saw, volume: 0.12))
         }
     }
 

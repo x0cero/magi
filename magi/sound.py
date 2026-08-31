@@ -86,31 +86,66 @@ def _write(path: Path, samples: list[float]) -> None:
         w.writeframes(frames)
 
 
-# The cue set. Frequencies picked to sit together: a G-minor-ish spine, so
-# consecutive cues in one deliberation do not clash.
+# The cue set.
+#
+# Retuned to sit closer to a 1990s operations console than to a generic app
+# chime. Three properties do most of that work: the pips are very short (30 to
+# 60ms), they are high and nearly pure, and the important ones are doubled or
+# tripled rather than held. A held tone reads as a notification; a burst of
+# short pips reads as a machine reporting.
+#
+# Frequencies stay on one spine so consecutive cues in a single deliberation do
+# not clash with each other.
+def _pip(freq: float, seconds: float = 0.032, volume: float = 0.20,
+         kind: str = "sine") -> list[float]:
+    """One short blip. The unit the console speaks in."""
+    return _tone(freq, seconds, kind, volume)
+
+
+def _burst(freqs: list[float], gap: float = 0.028, seconds: float = 0.032,
+           volume: float = 0.20) -> list[float]:
+    """Several pips in quick succession, which is what makes it read as data
+    rather than as a chime."""
+    out: list[float] = []
+    for i, f in enumerate(freqs):
+        if i:
+            out += _silence(gap)
+        out += _pip(f, seconds, volume)
+    return out
+
+
 def _build() -> dict[str, list[float]]:
     return {
-        # Boot: a rising sweep with a confirming blip, the console coming up.
-        "boot": _tone(180, 0.55, "saw", 0.22, sweep_to=760)
-                + _silence(0.05)
-                + _mix(_tone(784, 0.18, "sine", 0.28), _tone(1176, 0.18, "sine", 0.14)),
-        # A member reports in. Short, dry, repeated three times a round.
-        "report": _tone(1046, 0.055, "square", 0.16),
-        # Sent back to find its own argument: the same blip, pitched down.
-        "revote": _tone(660, 0.07, "square", 0.14),
-        # Unanimous. The only cue that resolves upward on a major interval.
-        "consensus": _mix(_tone(523, 0.42, "sine", 0.26, sweep_to=659),
-                          _tone(784, 0.42, "sine", 0.16, sweep_to=988)),
-        # 2-1. Decided, but somebody lost: flat, no resolution.
-        "majority": _mix(_tone(523, 0.34, "sine", 0.24),
-                         _tone(698, 0.34, "sine", 0.14)),
-        # Decided on conviction or broken by the desire lens. Unsettled.
-        "tiebreak": _tone(415, 0.30, "square", 0.16)
-                    + _tone(392, 0.34, "square", 0.16),
-        # Something failed. Descending, obviously wrong.
-        "error": _tone(330, 0.30, "saw", 0.24, sweep_to=110),
-        # Pattern alert, for the red-frame states.
-        "alert": (_tone(880, 0.13, "square", 0.20) + _silence(0.06)) * 3,
+        # Boot: a low sweep coming up under a three-pip confirmation.
+        "boot": _mix(
+            _tone(120, 0.62, "saw", 0.13, sweep_to=520),
+            _silence(0.30) + _burst([1568, 1568, 2093], gap=0.045, seconds=0.045, volume=0.17),
+        ),
+        # A unit reports in. Doubled, because a single blip reads as a click and
+        # a doubled one reads as an acknowledgement.
+        "report": _burst([1760, 2093], gap=0.030, seconds=0.030, volume=0.15),
+        # Sent back to find its own argument: the same shape, pitched down, so
+        # it is recognisably the same event going the other way.
+        "revote": _burst([988, 784], gap=0.030, seconds=0.034, volume=0.14),
+        # Unanimous. The only cue that climbs and lands.
+        "consensus": _burst([1046, 1319, 1568], gap=0.038, seconds=0.042, volume=0.17)
+                     + _silence(0.02)
+                     + _mix(_tone(1568, 0.30, "sine", 0.16),
+                            _tone(2093, 0.30, "sine", 0.08)),
+        # Two of three. Lands, but flat: nothing climbs, because somebody lost.
+        "majority": _burst([1319, 1319], gap=0.045, seconds=0.045, volume=0.17)
+                    + _silence(0.02)
+                    + _tone(1319, 0.24, "sine", 0.15),
+        # They split. Deliberately unresolved: it steps down and stops.
+        "tiebreak": _burst([1175, 988], gap=0.055, seconds=0.055, volume=0.16)
+                    + _silence(0.03)
+                    + _tone(880, 0.26, "square", 0.11),
+        # Something failed. Harsh and obviously wrong.
+        "error": _mix(_tone(220, 0.34, "saw", 0.20, sweep_to=98),
+                      _tone(233, 0.34, "saw", 0.12, sweep_to=104)),
+        # Pattern alert, for the red states. The one cue allowed to nag.
+        "alert": (_burst([1976, 1976], gap=0.035, seconds=0.048, volume=0.20)
+                  + _silence(0.075)) * 3,
     }
 
 

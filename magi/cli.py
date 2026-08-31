@@ -54,6 +54,29 @@ def cli(
         from magi.doctor import run_doctor
         sys.exit(asyncio.run(run_doctor()))
 
+    if question and question[0].lower() == "sounds":
+        # Audition the cues. Regenerates first so a retune is actually heard
+        # rather than replaying whatever was cached from an older build.
+        import time as _time
+
+        from magi import sound as _sound
+
+        _sound.CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
+        for name in _sound._build_names():
+            generated = _sound.SOUND_DIR / f"{name}.wav"
+            if generated.exists():
+                generated.unlink()
+        _sound.ensure_sounds()
+
+        for name in _sound._build_names():
+            source = _sound._resolve(name)
+            supplied = source is not None and source.parent == _sound.CUSTOM_DIR
+            click.echo(f"  {name:<10} {'yours' if supplied else 'built-in'}  {source}")
+            _sound.play(name)
+            _time.sleep(1.1)
+        click.echo(f"\ndrop your own here to replace any of them:\n  {_sound.CUSTOM_DIR}")
+        return
+
     if question and question[0].lower() == "roster":
         # Who is seated, before anybody has asked anything. The Mac app calls
         # this at launch so the display comes up populated instead of blank,
