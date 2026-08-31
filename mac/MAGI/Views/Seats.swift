@@ -24,7 +24,7 @@ enum Seats {
     /// Seat order matches `cuts`: the wedge after each cut, going clockwise.
     static let order = ["top", "bottom", "left"]
 
-    static func polygon(_ seat: String, gap: CGFloat = 0.013) -> [CGPoint] {
+    static func polygon(_ seat: String, gap: CGFloat = 0.028) -> [CGPoint] {
         guard let index = order.firstIndex(of: seat) else { return [] }
         let from = cuts[index]
         let to = cuts[(index + 1) % cuts.count]
@@ -103,7 +103,9 @@ enum Seats {
             y: points.map(\.y).reduce(0, +) / CGFloat(points.count)
         )
         let dx = centroid.x - centre.x, dy = centroid.y - centre.y
-        return CGPoint(x: centre.x + dx * 1.28, y: centre.y + dy * 1.28)
+        // 1.28 pushed the bottom seat's label past its own edge and clipped
+        // the answer off. Far enough out to clear the hub, no further.
+        return CGPoint(x: centre.x + dx * 1.12, y: centre.y + dy * 1.12)
     }
 
     static func seat(for member: String) -> String {

@@ -66,6 +66,70 @@ final class Council: ObservableObject {
         loadRoster()
     }
 
+    /// A council frozen in a given state, for the offline renderer. Not used by
+    /// the running app; it exists so the interface can be looked at without
+    /// spawning the engine or taking over somebody's screen.
+    private init(preview: Void) {}
+
+    static func preview(_ state: String) -> Council {
+        let council = Council(preview: ())
+        let models = ["MELCHIOR": "qwen3:4b", "BALTHASAR": "dolphin3:8b", "CASPER": "hermes3:8b"]
+        council.units = ["MELCHIOR", "BALTHASAR", "CASPER"].map { Unit(id: $0, model: models[$0] ?? "") }
+
+        func position(_ verdict: Verdict, _ confidence: Int, _ text: String, _ finding: String, _ lens: String) -> Position {
+            var p = Position()
+            p.verdictKey = verdict
+            p.confidence = confidence
+            p.reasoning = text
+            p.finding = finding
+            p.lens = lens
+            return p
+        }
+
+        let melchior = position(.reject, 4,
+            "There is no mechanism here. Dropping out removes the structure without putting anything in its place, and nothing in the question describes what replaces it.",
+            "no path from leaving to shipping", "MECHANISM")
+        let balthasar = position(.reject, 5,
+            "The cost is the option itself. Leaving now closes a door that is cheap to hold open and expensive to reopen later.",
+            "an option that is cheap to keep", "COST")
+        let casper = position(.accept, 3,
+            "You want to go. The question is phrased as permission, not as a decision, and that tells me you have already made it.",
+            "you already decided", "WANT")
+
+        switch state {
+        case "idle":
+            council.question = ""
+            council.phase = .idle
+        case "thinking":
+            council.question = "should i drop out of school to build apps"
+            council.phase = .deliberating(round: 1)
+            council.units[0].position = melchior
+            council.units[1].reporting = true
+            council.transcript = [
+                TranscriptLine(member: "MELCHIOR", round: 1, text: melchior.reasoning,
+                               finding: melchior.finding, lens: melchior.lens, position: melchior),
+            ]
+        default:
+            council.question = "should i drop out of school to build apps"
+            council.phase = .resolved
+            council.units[0].position = melchior
+            council.units[1].position = balthasar
+            council.units[2].position = casper
+            council.outcome = "majority"
+            council.synthesis = "MAJORITY — NO  (1A · 0C · 2R)"
+            council.verdict = .reject
+            council.transcript = [
+                TranscriptLine(member: "MELCHIOR", round: 1, text: melchior.reasoning,
+                               finding: melchior.finding, lens: melchior.lens, position: melchior),
+                TranscriptLine(member: "BALTHASAR", round: 1, text: balthasar.reasoning,
+                               finding: balthasar.finding, lens: balthasar.lens, position: balthasar),
+                TranscriptLine(member: "CASPER", round: 1, text: casper.reasoning,
+                               finding: casper.finding, lens: casper.lens, position: casper),
+            ]
+        }
+        return council
+    }
+
     /// Ask the engine who is seated so the display comes up populated rather
     /// than blank. Cheap and synchronous-ish: it is one process that prints a
     /// line and exits, and a failure just leaves the units to arrive with the

@@ -49,16 +49,17 @@ struct UnitPanel: View {
             let anchor = Seats.labelAnchor(seat)
 
             ZStack {
+                // No bloom on the fill. A glow on a shape this large spreads
+                // its colour straight across the seam, and two red slabs then
+                // read as one. The reference has hard edges; the light comes
+                // from the outline, not the field.
                 UnitShape(points: points)
                     .fill(fill)
-                    .glow(fill, radius: decided ? 20 : 6, intensity: decided ? 0.6 : 0.22)
 
-                // Amber edge on every slab: on the reference the shapes are
-                // outlined, and the outline is what stops three fills reading
-                // as one continuous field of colour.
+                // Amber edge on every slab. This is the only thing separating
+                // two neighbours that happen to have voted the same way.
                 UnitShape(points: points)
-                    .stroke(Theme.orange, lineWidth: 1.5)
-                    .glow(Theme.orange, radius: 5, intensity: 0.5)
+                    .stroke(Theme.orange, lineWidth: 2)
 
                 UnitShape(points: points)
                     .fill(.white)

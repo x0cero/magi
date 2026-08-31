@@ -1,20 +1,17 @@
 import SwiftUI
 
-/// The MAGI display, laid out the way the reference lays it out.
+/// The MAGI display: one rectangle cut into three interlocking slabs, with the
+/// readout in a band above them rather than printed across them.
 ///
-/// One rectangle cut into three interlocking slabs: the big one on the left,
-/// two stacked on the right, with a gap between them where the word MAGI sits.
-/// Amber rules run through the gaps. Kanji plates pin the top corners and a
-/// block of small fixed-width data runs down the left, because on the
-/// reference there is always more data on screen than anyone could read.
-///
-/// The earlier build had three tidy hexagons in a row. Tidy and separated is
-/// exactly what this is not.
+/// Three things were wrong before and all three are geometry, not taste. The
+/// telemetry was overlaid on the slabs, so orange text sat on a green fill and
+/// neither could be read. The seams were thin enough to disappear, so the three
+/// slabs merged into two blobs of colour. And the panel occupied a small box in
+/// the middle of a large black window, which is the opposite of the reference,
+/// where the display is the screen.
 struct MagiDisplay: View {
     @ObservedObject var council: Council
 
-    /// Reading order is CASPER left, BALTHASAR top right, MELCHIOR bottom
-    /// right, matching the reference rather than the engine's seat order.
     private var seated: [(seat: String, unit: Council.Unit)] {
         let byName = Dictionary(uniqueKeysWithValues: council.units.map { ($0.id, $0) })
         return ["CASPER", "BALTHASAR", "MELCHIOR"]
@@ -26,29 +23,50 @@ struct MagiDisplay: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 0) {
+            // The readout band. Its own strip, so nothing is ever printed on
+            // top of a slab.
+            HStack(alignment: .top) {
+                Telemetry(council: council)
+                Spacer(minLength: 20)
+                StatePlate(phase: council.phase)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
+
+            Rectangle()
+                .fill(Theme.orange.opacity(0.45))
+                .frame(height: 1)
+                .padding(.horizontal, 12)
+
             ZStack {
                 ForEach(seated, id: \.seat) { entry in
                     UnitPanel(unit: entry.unit, seat: entry.seat)
                 }
 
-                // The hub sits in the gap the three slabs leave open around
-                // the centre they were cut from.
+                // The hub, on its own black plate so it is never lost against
+                // whatever colour the slabs happen to be.
                 GeometryReader { geometry in
                     Text("MAGI")
-                        .font(Theme.display(min(24, geometry.size.width * 0.034)))
-                        .tracking(4)
+                        .font(Theme.display(min(26, geometry.size.width * 0.032)))
+                        .tracking(3)
                         .foregroundStyle(Theme.orange)
-                        .glow(Theme.orange, radius: 10)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Theme.void)
+                        .glow(Theme.orange, radius: 9, intensity: 0.8)
                         .position(x: geometry.size.width * Seats.centre.x,
                                   y: geometry.size.height * Seats.centre.y)
                 }
                 .allowsHitTesting(false)
             }
-            .aspectRatio(1.62, contentMode: .fit)
-            .padding(.horizontal, 26)
-            .padding(.top, 58)
-            .padding(.bottom, 18)
+            // A fixed height rather than an aspect ratio: aspectRatio(.fit)
+            // let the slab area shrink away from the frame edges and float in
+            // the middle of its own panel, which is the opposite of the point.
+            .frame(maxWidth: .infinity, minHeight: 300, idealHeight: 360, maxHeight: 420)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
 
             if !extras.isEmpty {
                 HStack(spacing: 10) {
@@ -59,9 +77,7 @@ struct MagiDisplay: View {
                 .padding(.bottom, 12)
             }
         }
-        .background(Theme.void.opacity(0.4))
-        .overlay(alignment: .topLeading) { Telemetry(council: council) }
-        .overlay(alignment: .topTrailing) { StatePlate(phase: council.phase) }
+        .background(Theme.void.opacity(0.5))
         .overlay(Rectangle().stroke(Theme.orange, lineWidth: 2))
         .overlay(Rectangle().stroke(Theme.orange.opacity(0.3), lineWidth: 1).padding(5))
         .glow(Theme.orange, radius: 14, intensity: 0.3)
@@ -81,21 +97,19 @@ private struct SpecialistChip: View {
     var body: some View {
         let state = Plain.unitState(unit.position)
         HStack(spacing: 8) {
-            Text(unit.name)
-                .font(Theme.display(12))
-                .tracking(1.6)
-            Text(state.english)
-                .font(Theme.display(14))
+            Text(unit.name).font(Theme.display(12)).tracking(1.6)
+            Text(state.english).font(Theme.display(14))
         }
-        .foregroundStyle(decided ? Theme.void : Theme.bone.opacity(0.5))
+        .foregroundStyle(Theme.void.opacity(decided ? 1 : 0.6))
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(fill)
+        .overlay(Rectangle().stroke(Theme.orange, lineWidth: 1))
     }
 }
 
-/// The readout pinned to the frame. Real values where there are any, because
-/// invented ones would be set dressing on a tool that is otherwise honest.
+/// The readout. Real values only: invented ones would be set dressing on a
+/// tool that is otherwise honest about what it knows.
 private struct Telemetry: View {
     @ObservedObject var council: Council
 
@@ -112,51 +126,45 @@ private struct Telemetry: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 5) {
-                PlateOutline(text: "提訴")
-                VStack(alignment: .leading, spacing: 1) {
-                    ForEach(rows, id: \.0) { row in
-                        HStack(spacing: 4) {
-                            Text(row.0)
-                                .foregroundStyle(Theme.orange.opacity(0.8))
-                                .frame(width: 56, alignment: .leading)
-                            Text(":").foregroundStyle(Theme.orange.opacity(0.4))
-                            Text(row.1).foregroundStyle(Theme.orange.opacity(0.55))
-                        }
+        HStack(alignment: .top, spacing: 12) {
+            PlateOutline(text: "提訴")
+            VStack(alignment: .leading, spacing: 1) {
+                ForEach(rows, id: \.0) { row in
+                    HStack(spacing: 4) {
+                        Text(row.0)
+                            .foregroundStyle(Theme.orange.opacity(0.85))
+                            .frame(width: 58, alignment: .leading)
+                        Text(":").foregroundStyle(Theme.orange.opacity(0.45))
+                        Text(row.1).foregroundStyle(Theme.orange.opacity(0.6))
                     }
                 }
-                .font(Theme.mono(7.5))
             }
+            .font(Theme.mono(8))
         }
-        .padding(.leading, 14)
-        .padding(.top, 12)
     }
 }
 
-/// Top-right: what the machine is doing.
+/// What the machine is doing, on the right of the readout band.
 private struct StatePlate: View {
     let phase: Council.Phase
 
     var body: some View {
         let status = Plain.status(phase)
         let alarm: Bool = { if case .failed = phase { return true }; return false }()
-        HStack(alignment: .top, spacing: 9) {
-            VStack(alignment: .trailing, spacing: 3) {
-                Text(status.kanji)
-                    .font(Theme.plate(15))
-                    .tracking(2)
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(status.english)
+                    .font(Theme.display(16))
+                    .tracking(2.5)
                     .foregroundStyle(alarm ? Theme.red : Theme.orange)
                     .glow(alarm ? Theme.red : Theme.orange, radius: 7, intensity: 0.6)
-                Text(status.english)
-                    .font(Theme.mono(7.5))
-                    .tracking(1.4)
+                Text(status.kanji)
+                    .font(Theme.plate(10))
+                    .tracking(2)
                     .foregroundStyle(Theme.orange.opacity(0.6))
             }
             PlateOutline(text: "決議")
         }
-        .padding(.trailing, 14)
-        .padding(.top, 12)
     }
 }
 

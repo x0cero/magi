@@ -1,7 +1,12 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var council = Council()
+    @StateObject private var council: Council
+
+    init(previewCouncil: Council? = nil) {
+        _council = StateObject(wrappedValue: previewCouncil ?? Council())
+    }
+
     @StateObject private var audio = Audio()
     @State private var draft = ""
     @State private var stampShowing = false
@@ -25,9 +30,9 @@ struct ContentView: View {
                 // the reason this is an app and not a terminal, and the first
                 // build scrolled it away exactly when it mattered.
                 MagiDisplay(council: council)
-                    .padding(.top, 18)
-                    .padding(.bottom, 12)
-                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 14)
+                    .padding(.bottom, 10)
 
                 if case .resolved = council.phase, !stampShowing {
                     AnswerBar(verdict: council.verdict,
