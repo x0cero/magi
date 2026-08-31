@@ -98,8 +98,12 @@ struct Scanlines: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
-        .allowsHitTesting(false)
+        // Order matters: a blend mode composites the view into its own layer,
+        // and that layer takes hit testing back. Applying the pass-through
+        // last is the difference between a CRT overlay and a sheet of glass
+        // that eats every click in the window.
         .blendMode(.multiply)
+        .allowsHitTesting(false)
     }
 }
 
@@ -115,6 +119,7 @@ struct ScreenGlass: View {
             )
             Scanlines()
         }
+        .compositingGroup()
         .allowsHitTesting(false)
     }
 }
