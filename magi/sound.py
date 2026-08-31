@@ -151,6 +151,24 @@ def _player() -> list[str] | None:
 _PLAYER: list[str] | None | bool = False  # False = not yet probed
 
 
+# Audio you supply yourself wins over the generated tone. Its own directory,
+# because `SOUND_DIR` holds files this module writes and may rewrite, and a
+# user's file must never be sitting where something else expects to own the
+# name. Nothing is shipped or downloaded here: the show's audio is Khara's, so
+# supplying it is the user's own business on their own machine.
+CUSTOM_DIR = SOUND_DIR / "custom"
+CUSTOM_EXTENSIONS = (".wav", ".aiff", ".aif", ".m4a", ".mp3", ".caf")
+
+
+def _resolve(cue: str) -> Path | None:
+    for extension in CUSTOM_EXTENSIONS:
+        candidate = CUSTOM_DIR / f"{cue}{extension}"
+        if candidate.exists():
+            return candidate
+    generated = SOUND_DIR / f"{cue}.wav"
+    return generated if generated.exists() else None
+
+
 def play(cue: str) -> None:
     """Fire a cue and return immediately. Never raises, never waits."""
     global _PLAYER
@@ -160,8 +178,8 @@ def play(cue: str) -> None:
         _PLAYER = _player() if ensure_sounds() else None
     if not _PLAYER:
         return
-    path = SOUND_DIR / f"{cue}.wav"
-    if not path.exists():
+    path = _resolve(cue)
+    if path is None:
         return
     try:
         subprocess.Popen(

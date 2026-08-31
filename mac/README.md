@@ -48,6 +48,28 @@ defaults write io.zeroarch.magi enginePath "/path/to/magi"
 
 ## Sound
 
+Cues are synthesised from arithmetic. Nothing is sampled from the show and
+nothing is downloaded.
+
+**Using your own audio.** Drop files here and they are played instead:
+
+```
+~/.config/magi/sounds/custom/
+    boot.wav        the console coming up
+    report.wav      one unit answering
+    consensus.wav   all three agreed
+    majority.wav    two of three
+    tiebreak.wav    they split
+    error.wav       something went wrong
+```
+
+Any format macOS reads works: wav, aiff, m4a, mp3, caf. Its own folder,
+because the generated tones live one level up and get rewritten. Both the app
+and the CLI check here first, so a file dropped in serves both. What you put
+there is your business; this repo only reads the folder.
+
+## How the built-in cues sound
+
 Synthesised in the app from arithmetic, not sampled from the show. A unit
 reporting clicks, a unanimous council resolves upward, a tiebreak does not
 resolve. Audio failing to start is silence, never an error: a decision tool

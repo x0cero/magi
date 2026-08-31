@@ -86,3 +86,52 @@ class TestOutcomeCues:
 
     def test_unanimity_and_a_tiebreak_do_not_sound_the_same(self):
         assert sound.OUTCOME_CUE["consensus"] != sound.OUTCOME_CUE["tiebreak"]
+
+
+class TestSuppliedAudioWins:
+    """Audio the user drops in overrides the generated tone.
+
+    It lives in its own directory because SOUND_DIR holds files this module
+    writes and may rewrite; a file somebody supplied must never sit where
+    something else expects to own the name.
+    """
+
+    def test_a_supplied_file_is_preferred(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sound, "SOUND_DIR", tmp_path)
+        monkeypatch.setattr(sound, "CUSTOM_DIR", tmp_path / "custom")
+        sound.ensure_sounds()
+        (tmp_path / "custom").mkdir()
+        supplied = tmp_path / "custom" / "boot.wav"
+        supplied.write_bytes((tmp_path / "boot.wav").read_bytes())
+        assert sound._resolve("boot") == supplied
+
+    def test_every_accepted_extension_resolves(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sound, "SOUND_DIR", tmp_path)
+        monkeypatch.setattr(sound, "CUSTOM_DIR", tmp_path / "custom")
+        (tmp_path / "custom").mkdir()
+        for extension in sound.CUSTOM_EXTENSIONS:
+            path = tmp_path / "custom" / f"report{extension}"
+            path.write_bytes(b"x")
+            assert sound._resolve("report") == path
+            path.unlink()
+
+    def test_falls_back_to_the_generated_tone(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sound, "SOUND_DIR", tmp_path)
+        monkeypatch.setattr(sound, "CUSTOM_DIR", tmp_path / "custom")
+        sound.ensure_sounds()
+        assert sound._resolve("boot") == tmp_path / "boot.wav"
+
+    def test_an_unknown_cue_resolves_to_nothing(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sound, "SOUND_DIR", tmp_path)
+        monkeypatch.setattr(sound, "CUSTOM_DIR", tmp_path / "custom")
+        assert sound._resolve("no-such-cue") is None
+
+    def test_generating_never_touches_the_custom_directory(self, tmp_path, monkeypatch):
+        """ensure_sounds must not be able to clobber somebody's own file."""
+        monkeypatch.setattr(sound, "SOUND_DIR", tmp_path)
+        monkeypatch.setattr(sound, "CUSTOM_DIR", tmp_path / "custom")
+        (tmp_path / "custom").mkdir()
+        mine = tmp_path / "custom" / "boot.wav"
+        mine.write_bytes(b"mine")
+        sound.ensure_sounds()
+        assert mine.read_bytes() == b"mine"

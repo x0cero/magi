@@ -16,6 +16,25 @@ final class Audio: ObservableObject {
 
     @AppStorage("soundEnabled") var enabled: Bool = true
 
+    /// Drop your own audio here and it is used instead of the synthesised
+    /// tone. One file per cue, named for it: boot, report, consensus,
+    /// majority, tiebreak, error. Any format AVAudioFile reads (wav, aiff,
+    /// m4a, mp3) works.
+    ///
+    /// Its own folder, which nothing else writes to. The CLI generates its
+    /// tones into `sounds/`, so putting user audio there would collide with a
+    /// file the CLI may overwrite.
+    ///
+    /// Nothing is shipped here and nothing is fetched. The audio from the show
+    /// belongs to Khara, so supplying it is the user's own business on their
+    /// own machine; this is only the hook that plays what is already there.
+    static var soundsDirectory: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/magi/sounds/custom", isDirectory: true)
+    }
+
+    private static let extensions = ["wav", "aiff", "aif", "m4a", "mp3", "caf"]
+
     private let engine = AVAudioEngine()
     private var players: [Cue: AVAudioPlayerNode] = [:]
     private var buffers: [Cue: AVAudioPCMBuffer] = [:]
@@ -28,16 +47,56 @@ final class Audio: ObservableObject {
     }
 
     private func prepare() {
-        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
+        let synthesised = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
         for cue in [Cue.boot, .report, .consensus, .majority, .tiebreak, .error] {
-            guard let buffer = render(cue, format: format) else { continue }
+            // A file you supplied wins over the built-in tone.
+            let loaded = loadFile(for: cue)
+            let buffer = loaded ?? render(cue, format: synthesised)
+            guard let buffer else { continue }
             let player = AVAudioPlayerNode()
             engine.attach(player)
-            engine.connect(player, to: engine.mainMixerNode, format: format)
+            engine.connect(player, to: engine.mainMixerNode, format: buffer.format)
             players[cue] = player
             buffers[cue] = buffer
         }
         engine.mainMixerNode.outputVolume = 0.5
+    }
+
+    /// Read a cue from disk if the user put one there. Any failure falls back
+    /// to the synthesised tone rather than going silent.
+    private func loadFile(for cue: Cue) -> AVAudioPCMBuffer? {
+        let base = Self.soundsDirectory.appendingPathComponent(name(of: cue))
+        for ext in Self.extensions {
+            let url = base.appendingPathExtension(ext)
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            guard let file = try? AVAudioFile(forReading: url) else { continue }
+            let frames = AVAudioFrameCount(file.length)
+            guard frames > 0,
+                  let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat,
+                                                frameCapacity: frames),
+                  (try? file.read(into: buffer)) != nil
+            else { continue }
+            return buffer
+        }
+        return nil
+    }
+
+    private func name(of cue: Cue) -> String {
+        switch cue {
+        case .boot: return "boot"
+        case .report: return "report"
+        case .consensus: return "consensus"
+        case .majority: return "majority"
+        case .tiebreak: return "tiebreak"
+        case .error: return "error"
+        }
+    }
+
+    /// Which cues are currently coming from a file rather than from arithmetic.
+    var suppliedCues: [String] {
+        [Cue.boot, .report, .consensus, .majority, .tiebreak, .error]
+            .filter { loadFile(for: $0) != nil }
+            .map { name(of: $0) }
     }
 
     private func start() {
