@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.15.0: a real app
+
+The terminal console was as far as characters on a grid go. What makes the
+reference look good is glow, curvature and motion, none of which a character
+cell can draw, so the console got a real surface: a Mac app under `mac/`.
+
+Three units in the triangle as actual hexagons, dark and outlined while they
+think, filled and lit the moment they report. A bus with current visibly
+running down it. Conviction as filled cells. When the council lands, the
+verdict takes the entire screen at 128pt, then clears itself and leaves a bar
+you can click to replay it. Build it with `./mac/build.sh`.
+
+**The app contains no council logic.** It spawns the engine and reads
+newline-delimited JSON from the new `magi stream`, plus `magi roster` so the
+display comes up populated instead of blank. That split is the point: the
+personas, validators, grounding rules and tie-breaking are 1,400 lines that the
+eval harness measures, and a Swift reimplementation would be a second copy of
+all of it that nothing ever scores. The wire format is versioned and asserted
+on both sides.
+
+Sound is synthesised in the app rather than shipped, same as the terminal side
+and for the same reason. Audio that fails to start is silence, never an error.
+
+The terminal interface is unchanged and still the fastest way to ask something.
+
 ## 0.14.0: the console
 
 The interface was a set of tastefully muted panels that could have belonged to

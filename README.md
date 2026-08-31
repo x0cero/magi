@@ -49,6 +49,24 @@ There is no outcome that hands the question back. Earlier versions reported any 
 
 CONDITIONAL verdicts still require a concrete blocker tied to your actual situation; vague hedges are coerced to ACCEPT.
 
+## The Mac app
+
+The terminal can only put characters on a grid, and the display this copies is
+mostly glow, curvature and motion. So there is a real app:
+
+```bash
+./mac/build.sh      # needs xcodegen; installs to /Applications
+```
+
+Three units in the triangle, lit and wired to a bus, and the verdict takes the
+whole screen when the council lands. The app runs the same council: it spawns
+`magi stream` and reads newline-delimited JSON, so there is one implementation
+of the personas and the eval harness still measures what the app runs. See
+[mac/README.md](mac/README.md).
+
+The terminal console below is still there and still the fastest way to ask
+something.
+
 ## The display
 
 The console is a copy of the MAGI display from the show, not an homage to it.
