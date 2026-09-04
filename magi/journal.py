@@ -60,8 +60,19 @@ def save_entry(
     outcome: str,
     synthesis: str,
     final_verdicts: dict[str, str],
+    thread: str | None = None,
+    turn: int = 1,
+    mode: str | None = None,
+    options: list[str] | None = None,
+    decision: str = "",
+    positions: dict[str, dict] | None = None,
 ) -> str:
-    """Append a deliberation to the journal. Returns the entry's short id."""
+    """Append a deliberation to the journal. Returns the entry's short id.
+
+    `thread` groups the turns of one conversation; `positions` keeps each
+    member's full final response so the thread can be shown again and
+    resumed. Older entries have neither and count as one-turn threads.
+    """
     _ensure_dir()
     entry_id = uuid.uuid4().hex[:8]
     entry = {
@@ -74,6 +85,12 @@ def save_entry(
         "synthesis": synthesis,
         "final_verdicts": final_verdicts,
         "user_outcome": None,
+        "thread": thread or entry_id,
+        "turn": turn,
+        "mode": mode,
+        "options": list(options or []),
+        "decision": decision,
+        "positions": positions or {},
     }
     safe = _safe_path(JOURNAL_PATH)
     fd = os.open(str(safe), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
@@ -104,6 +121,17 @@ def load_entries(limit: int | None = None) -> list[dict]:
     if limit and limit > 0:
         entries = entries[:limit]
     return entries
+
+
+def new_thread_id() -> str:
+    return uuid.uuid4().hex[:8]
+
+
+def load_thread(thread_id: str) -> list[dict]:
+    """Every turn of one conversation, oldest first."""
+    turns = [e for e in load_entries() if e.get("thread", e["id"]) == thread_id]
+    turns.reverse()
+    return turns
 
 
 def find_entry(id_prefix: str) -> dict | None:

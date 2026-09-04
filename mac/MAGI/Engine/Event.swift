@@ -74,6 +74,8 @@ struct Position: Codable, Equatable {
 enum MagiEvent {
     case council(models: [String: String], version: String, protocolVersion: Int)
     case warming(member: String, state: String)
+    case turn(thread: String, turn: Int, text: String)
+    case thread(id: String, turns: [Journal.Entry])
     case intake(mode: String, options: [String], decision: String)
     case round(Int)
     case vote(member: String, position: Position)
@@ -105,6 +107,18 @@ enum EventDecoder {
             return .warming(
                 member: object["member"] as? String ?? "",
                 state: object["state"] as? String ?? "loading"
+            )
+        case "turn":
+            return .turn(
+                thread: object["thread"] as? String ?? "",
+                turn: object["turn"] as? Int ?? 1,
+                text: object["text"] as? String ?? ""
+            )
+        case "thread":
+            let raw = object["turns"] as? [[String: Any]] ?? []
+            return .thread(
+                id: object["thread"] as? String ?? "",
+                turns: raw.compactMap(Journal.parse)
             )
         case "intake":
             return .intake(

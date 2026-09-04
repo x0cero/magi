@@ -43,6 +43,10 @@ final class Council: ObservableObject {
     /// When the user typed a statement, the yes/no decision the engine read
     /// in it. Empty when they asked a question outright.
     @Published private(set) var decision: String = ""
+    /// The journal thread this conversation belongs to, once the engine has
+    /// named it. The HISTORY list highlights it.
+    @Published private(set) var thread: String?
+    @Published private(set) var turn: Int = 0
     @Published private(set) var question: String = ""
     @Published private(set) var synthesis: String = ""
     @Published private(set) var outcome: String = ""
@@ -68,16 +72,11 @@ final class Council: ObservableObject {
     }
 
     private var process: Process?
+    private var input: FileHandle?
     private var task: Task<Void, Never>?
 
-    /// Published, not computed off `process`.
-    ///
-    /// This was `process != nil`, which meant the input re-enabled only if
-    /// something else published a change afterwards. It never did: the last
-    /// published change is the verdict, which lands while the process is still
-    /// alive, and clearing the process a moment later published nothing. So
-    /// the field stayed disabled after the first question and the app could
-    /// only be asked once per launch.
+    /// A turn is in flight. The engine process itself outlives turns: it is
+    /// one session that keeps the thread, so "running" cannot mean "alive".
     @Published private(set) var isRunning = false
 
     init() {
@@ -206,19 +205,81 @@ final class Council: ObservableObject {
     func ask(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isRunning else { return }
+        guard ensureSession() else { return }
+        isRunning = true
+        startedAt = Date()
+        finishedAt = nil
+        if thread == nil { reset(question: trimmed) } else { phase = .deliberating(round: 1) }
+        send(trimmed)
+    }
 
+    /// Drop the thread. The next question starts a fresh conversation.
+    func newThread() {
+        guard !isRunning else { return }
+        if process != nil { send("/new") }
+        thread = nil
+        turn = 0
+        reset(question: "")
+        phase = .idle
+    }
+
+    /// Reopen a past conversation: shown at once from the journal, and the
+    /// engine rebuilds its memory of it so the next line continues it.
+    func resume(_ conversation: Journal.Thread) {
+        guard !isRunning else { return }
+        show(conversation)
+        guard ensureSession() else { return }
+        send("/resume \(conversation.id)")
+    }
+
+    private func show(_ conversation: Journal.Thread) {
+        let first = conversation.first
+        let last = conversation.last
+        reset(question: first.question)
+        thread = conversation.id
+        turn = conversation.turns.count
+        mode = first.mode
+        decision = first.decision
+        for entry in conversation.turns {
+            // The opening question is the YOU ASKED line; later turns are cards.
+            if entry.turn > 1 {
+                transcript.append(TranscriptLine(member: "YOU", round: entry.turn, text: entry.question,
+                                                 finding: "", lens: "", position: Position()))
+            }
+            // Core members first, in seat order, then any specialist.
+            let members = ["MELCHIOR", "BALTHASAR", "CASPER"]
+                + entry.positions.keys.filter { !["MELCHIOR", "BALTHASAR", "CASPER"].contains($0) }.sorted()
+            for member in members {
+                guard let position = entry.positions[member] else { continue }
+                transcript.append(TranscriptLine(member: member, round: 1, text: position.reasoning,
+                                                 finding: position.finding, lens: position.lens,
+                                                 position: position))
+            }
+        }
+        for (name, position) in last.positions {
+            if let index = units.firstIndex(where: { $0.id == name }) { units[index].position = position }
+        }
+        synthesis = last.synthesis
+        outcome = last.outcome
+        verdict = Self.decidedVerdict(synthesis: last.synthesis, positions: last.positions)
+        rounds = 0
+        startedAt = nil
+        phase = .resolved
+    }
+
+    /// Start the engine session if it is not already up. One process for the
+    /// life of the conversation; it reads a line per turn on stdin.
+    private func ensureSession() -> Bool {
+        if process != nil { return true }
         guard let engine = Self.enginePath() else {
             phase = .failed("magi engine not found. Install it with: pipx install magi-council")
-            return
+            return false
         }
-
-        reset(question: trimmed)
         phase = .warming
-        startedAt = Date()
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: engine)
-        process.arguments = ["stream", trimmed]
+        process.arguments = ["stream"]
         // The engine's own console tones would double up with the app's.
         var env = ProcessInfo.processInfo.environment
         env["MAGI_SOUND"] = "0"
@@ -226,18 +287,21 @@ final class Council: ObservableObject {
         process.environment = env
 
         let pipe = Pipe()
+        let stdin = Pipe()
         process.standardOutput = pipe
+        process.standardInput = stdin
         process.standardError = Pipe()
         self.process = process
-        isRunning = true
+        self.input = stdin.fileHandleForWriting
+
+        do {
+            try process.run()
+        } catch {
+            finish(error: "could not start the engine: \(error.localizedDescription)")
+            return false
+        }
 
         task = Task.detached { [weak self] in
-            do {
-                try process.run()
-            } catch {
-                await MainActor.run { self?.finish(error: "could not start the engine: \(error.localizedDescription)") }
-                return
-            }
             // Line-buffered by hand: availableData arrives in arbitrary chunks
             // and a JSON event split across two reads must not be dropped.
             var buffer = Data()
@@ -257,12 +321,19 @@ final class Council: ObservableObject {
             process.waitUntilExit()
             await MainActor.run { self?.processEnded(code: process.terminationStatus) }
         }
+        return true
+    }
+
+    private func send(_ line: String) {
+        guard let input, let data = (line.replacingOccurrences(of: "\n", with: " ") + "\n").data(using: .utf8) else { return }
+        try? input.write(contentsOf: data)
     }
 
     func cancel() {
         process?.terminate()
         task?.cancel()
         process = nil
+        input = nil
         task = nil
         isRunning = false
         if case .resolved = phase {} else { phase = .idle }
@@ -300,10 +371,28 @@ final class Council: ObservableObject {
                 units[index].ready = (state == "ready")
             }
 
+        case let .turn(id, number, text):
+            if number <= 1 || thread != id {
+                reset(question: text)
+            } else {
+                // A follow-up: the argument continues under the same question.
+                transcript.append(TranscriptLine(member: "YOU", round: number, text: text,
+                                                 finding: "", lens: "", position: Position()))
+                for index in units.indices { units[index].reporting = false }
+            }
+            thread = id
+            turn = number
+            rounds = 0
+            verdict = nil
+            phase = .deliberating(round: 1)
+
+        case let .thread(id, _):
+            thread = id
+
         case let .intake(mode, options, decision):
             self.mode = mode
             self.options = options
-            self.decision = decision
+            if !decision.isEmpty { self.decision = decision }
             rounds = max(rounds, 1)
             phase = .deliberating(round: 1)
 
@@ -328,6 +417,7 @@ final class Council: ObservableObject {
             }
             verdict = Self.decidedVerdict(synthesis: synthesis, positions: positions)
             finishedAt = Date()
+            isRunning = false
             phase = .resolved
 
         case let .failure(message):
@@ -377,17 +467,17 @@ final class Council: ObservableObject {
 
     private func finish(error: String) {
         phase = .failed(error)
-        process = nil
-        task = nil
         isRunning = false
     }
 
     private func processEnded(code: Int32) {
         process = nil
+        input = nil
         task = nil
+        let wasRunning = isRunning
         isRunning = false
         if case .resolved = phase { return }
         if case .failed = phase { return }
-        phase = code == 0 ? .idle : .failed("the engine exited with code \(code)")
+        phase = (code == 0 && !wasRunning) ? .idle : .failed("the engine exited with code \(code)")
     }
 }

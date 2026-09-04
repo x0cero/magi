@@ -126,13 +126,11 @@ def cli(
         # The Mac app's entry point: newline-delimited JSON on stdout, so the
         # app renders the same deliberation the CLI does without owning a
         # second copy of the council.
-        from magi.stream import stream_question
+        from magi.stream import stream_question, stream_session
 
         body = " ".join(question[1:]).strip()
-        if not body and not sys.stdin.isatty():
-            body = sys.stdin.read().strip()
-        if not body:
-            click.echo('usage: magi stream "your question"', err=True)
+        if not body and sys.stdin.isatty():
+            click.echo('usage: magi stream "your question"  (or pipe turns on stdin)', err=True)
             sys.exit(1)
         models_for_stream = dict(DEFAULT_MODELS)
         models_for_stream, _ = apply_config(
@@ -143,7 +141,9 @@ def cli(
             canonical = spec.upper()
             if canonical in SPECIALISTS and canonical not in models_for_stream:
                 models_for_stream[canonical] = SPECIALIST_DEFAULT_MODELS[canonical]
-        sys.exit(asyncio.run(stream_question(body, models_for_stream)))
+        if body:
+            sys.exit(asyncio.run(stream_question(body, models_for_stream)))
+        sys.exit(asyncio.run(stream_session(models_for_stream)))
 
     if question and question[0].lower() == "stats":
         from magi.repl import run_stats

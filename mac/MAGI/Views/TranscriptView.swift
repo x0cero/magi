@@ -36,7 +36,7 @@ struct TranscriptCard: View {
     let line: Council.TranscriptLine
     var tag: String? = nil
 
-    private var accent: Color { Theme.color(for: line.position.verdictKey) }
+    private var accent: Color { line.member == "YOU" ? Theme.orange : Theme.color(for: line.position.verdictKey) }
 
     private var subtitle: String {
         let conviction = Plain.conviction(line.position.confidence)
@@ -45,6 +45,33 @@ struct TranscriptCard: View {
     }
 
     var body: some View {
+        if line.member == "YOU" {
+            you
+        } else {
+            member
+        }
+    }
+
+    /// What the user said, when it is not the opening question: a short line
+    /// under a YOU rule so the argument reads as a conversation.
+    private var you: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Caption(text: line.round > 1 ? "YOU ARGUED BACK" : "YOU", color: Theme.orange, size: 10, tracking: 1.4)
+            Text(line.text)
+                .font(Theme.mono(13))
+                .foregroundStyle(Theme.bone)
+                .lineSpacing(5)
+                .frame(maxWidth: 660, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 2)
+        .padding(.leading, 16)
+        .overlay(alignment: .leading) { Rectangle().fill(Theme.orange).frame(width: 3) }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+
+    private var member: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(line.member)

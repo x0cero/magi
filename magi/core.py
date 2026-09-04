@@ -383,6 +383,34 @@ class Deliberation:
     def remove_member(self, name: str) -> None:
         self.histories.pop(name, None)
 
+    @classmethod
+    def from_journal(cls, member_names: list[str], turns: list[dict]) -> "Deliberation":
+        """Rebuild a thread from its journaled turns so it can be continued.
+
+        Each turn contributes the user's message and every member's final
+        response, replayed in order, which is exactly the history a live
+        thread would have accumulated.
+        """
+        deliberation = cls(member_names)
+        for index, turn in enumerate(turns):
+            deliberation.add_user_message(turn.get("question", ""))
+            if index == 0:
+                deliberation.mode = turn.get("mode") or "decision"
+                deliberation.options = list(turn.get("options") or [])
+                deliberation.frame(turn.get("decision") or "")
+            response_cls = {
+                "choice": ChoiceResponse,
+                "open": RecommendResponse,
+            }.get(deliberation.mode, PersonaResponse)
+            for name, raw in (turn.get("positions") or {}).items():
+                if name not in deliberation.histories:
+                    continue
+                try:
+                    deliberation.commit_response(name, response_cls.model_validate(raw))
+                except Exception:
+                    continue
+        return deliberation
+
     @property
     def question_text(self) -> str:
         """Everything the user actually said, which is the whole factual record.

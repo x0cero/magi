@@ -112,13 +112,24 @@ def _framing_is_grounded(decision: str, question: str) -> bool:
     return not (figures(decision) - figures(question))
 
 
+_QUESTION_SHAPE = re.compile(
+    r"^\s*(should|shall|do|does|did|is|are|am|can|could|would|will|what|which|who|where|when|how|why)\b"
+    r"|\?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _already_a_question(text: str) -> bool:
+    return bool(_QUESTION_SHAPE.search(text))
+
+
 def _settle(classification: Classification, question: str) -> Classification:
     if classification.question_class == QuestionClass.NOISE and not looks_like_noise(question):
         classification.question_class = QuestionClass.DECISION
     if classification.question_class == QuestionClass.NOISE:
         classification.decision = ""
-    decision = classification.decision.strip().strip('"')
-    if decision and not _framing_is_grounded(decision, question):
+    decision = classification.decision.strip().strip('"').rstrip("?").strip()
+    if decision and (_already_a_question(question) or not _framing_is_grounded(decision, question)):
         decision = ""
     classification.decision = decision
     return classification

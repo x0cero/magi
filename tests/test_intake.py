@@ -72,3 +72,12 @@ class TestNoiseGuard:
         d.frame("should I quit my job")
         assert "The decision on the table: should I quit my job?" in d.question_text
         assert d.turn == 1
+
+    def test_a_question_gets_no_framing(self):
+        from magi.intake import _settle
+        c = Classification(question_class=QuestionClass.DECISION, options=[],
+                           decision="should i deploy on friday")
+        assert _settle(c, "should i deploy on friday").decision == ""
+        c = Classification(question_class=QuestionClass.DECISION, options=[],
+                           decision="should i deploy on friday")
+        assert _settle(c, "deploy friday?").decision == ""

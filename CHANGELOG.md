@@ -1,6 +1,14 @@
 # Changelog
 
-## 0.16.0: statements reach the council
+## 0.16.0: statements reach the council, and the app remembers
+
+The app's "argue back" line was not arguing back. Every send spawned a fresh
+engine with no memory, so a follow-up was classified as a new question, and
+nothing the app did was ever journaled. `magi stream` with no question is now
+a session: one line per turn on stdin, the thread kept between turns, `/new`
+to start over, `/resume <thread>` to rebuild a past one from the journal.
+Every turn is journaled with a thread id and each member's full position, so
+the app's new HISTORY list can reopen any conversation and keep going.
 
 People who cannot decide do not arrive with "should I X?". They arrive with
 "i keep putting off calling the dentist", and intake was bouncing that as

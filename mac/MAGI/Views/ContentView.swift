@@ -30,7 +30,7 @@ struct ContentView: View {
                 TitleBar(council: council, journalCount: journal.count)
 
                 HStack(spacing: 0) {
-                    Sidebar(council: council, record: Journal.featured(journal))
+                    Sidebar(council: council, threads: Journal.threads(journal))
                         .frame(width: 336)
                     Rectangle().fill(Theme.hairline).frame(width: 1)
                     MainColumn(council: council, draft: $draft, focused: $inputFocused,
@@ -63,7 +63,7 @@ struct ContentView: View {
             }
         }
         .onChange(of: council.transcript.count) { _, count in
-            if count > 0 { audio.play(.report) }
+            if count > 0, council.transcript.last?.member != "YOU", council.isRunning { audio.play(.report) }
         }
         .onChange(of: council.phase) { _, phase in
             switch phase {
@@ -180,7 +180,7 @@ private struct TitleBar: View {
 
 private struct Sidebar: View {
     @ObservedObject var council: Council
-    let record: Journal.Entry?
+    let threads: [Journal.Thread]
 
     private var reported: Int {
         council.units.filter { unit in
@@ -223,17 +223,40 @@ private struct Sidebar: View {
             .padding(.horizontal, 18)
             .padding(.vertical, 16)
 
-            if let record {
-                VStack(alignment: .leading, spacing: 8) {
-                    Caption(text: "RECORD")
-                    RecordCard(entry: record)
+            HStack {
+                Caption(text: "HISTORY")
+                Spacer()
+                if council.thread != nil {
+                    Button("NEW", action: council.newThread)
+                        .buttonStyle(SolidButton(color: Theme.orange))
+                        .disabled(council.isRunning)
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 6)
-                .padding(.bottom, 16)
             }
+            .padding(.horizontal, 18)
+            .padding(.top, 6)
+            .padding(.bottom, 8)
 
-            Spacer(minLength: 0)
+            if threads.isEmpty {
+                Text("nothing yet. ask something you cannot decide.")
+                    .font(Theme.mono(11))
+                    .foregroundStyle(Theme.steel)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+                Spacer(minLength: 0)
+            } else {
+                ScrollView {
+                    VStack(spacing: 6) {
+                        ForEach(threads) { thread in
+                            ThreadRow(thread: thread, current: thread.id == council.thread)
+                                .contentShape(Rectangle())
+                                .onTapGesture { council.resume(thread) }
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 12)
+                }
+                .disabled(council.isRunning)
+            }
 
             Caption(text: "+ INVITE A SPECIALIST", size: 10, tracking: 1.6)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -246,50 +269,48 @@ private struct Sidebar: View {
     }
 }
 
-/// One past deliberation: when and what was asked, then what they said and
-/// what the user actually did.
-private struct RecordCard: View {
-    let entry: Journal.Entry
+/// One past conversation: when and what was asked, what they said, and how
+/// many turns it ran. Click to reopen it and keep arguing.
+private struct ThreadRow: View {
+    let thread: Journal.Thread
+    let current: Bool
 
     private static let day: DateFormatter = {
         let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
+        f.dateFormat = "MM-dd"
         return f
     }()
 
     private var theySaid: String {
-        let upper = entry.synthesis.uppercased()
-        if upper.contains("ONLY IF") { return "they said only if" }
-        if upper.hasPrefix("CONSENSUS") || upper.hasPrefix("MAJORITY") || upper.hasPrefix("CALL") {
-            if upper.contains("NO") { return "they said no" }
-            if upper.contains("YES") { return "they said yes" }
-        }
-        if entry.outcome == "picks" || entry.outcome == "choice" { return "they picked" }
-        return "they answered"
+        let last = thread.last
+        let upper = last.synthesis.uppercased()
+        var said = "they answered"
+        if upper.contains("ONLY IF") { said = "they said only if" }
+        else if upper.hasPrefix("CONSENSUS") || upper.hasPrefix("MAJORITY") || upper.hasPrefix("CALL") {
+            if upper.contains("NO") { said = "they said no" }
+            else if upper.contains("YES") { said = "they said yes" }
+        } else if last.outcome == "picks" || last.outcome == "choice" { said = "they picked" }
+        if let outcome = last.userOutcome, !outcome.isEmpty { said += " · \(outcome)" }
+        let turns = thread.turns.count
+        return turns > 1 ? "\(said) · \(turns) turns" : said
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("\(Self.day.string(from: entry.date)) · \(entry.question)")
+        VStack(alignment: .leading, spacing: 4) {
+            Text("\(Self.day.string(from: thread.date)) · \(thread.question)")
                 .font(Theme.mono(11))
-                .foregroundStyle(Theme.record)
+                .foregroundStyle(current ? Theme.bone : Theme.record)
                 .lineLimit(2)
-            if let outcome = entry.userOutcome, !outcome.isEmpty {
-                Text("\(theySaid) · \(outcome)")
-                    .font(Theme.mono(11))
-                    .foregroundStyle(Theme.steel)
-                    .lineLimit(2)
-            } else {
-                Text("\(theySaid) · what did you do?")
-                    .font(Theme.mono(11))
-                    .foregroundStyle(Theme.steel)
-                    .lineLimit(2)
-            }
+            Text(theySaid)
+                .font(Theme.mono(11))
+                .foregroundStyle(Theme.steel)
+                .lineLimit(1)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 1))
+        .background(current ? Theme.panel.opacity(0.0) : Color.clear)
+        .overlay(Rectangle().stroke(current ? Theme.orange : Theme.hairline, lineWidth: 1))
     }
 }
 
@@ -465,6 +486,7 @@ private struct InputBar: View {
 
     private var placeholder: String {
         if case .resolved = council.phase { return "argue back — they reconsider with what you add" }
+        if council.thread != nil { return "add to this thread" }
         return Plain.placeholder
     }
 
