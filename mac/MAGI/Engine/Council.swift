@@ -47,6 +47,13 @@ final class Council: ObservableObject {
     @Published private(set) var engineVersion: String = ""
     @Published private(set) var transcript: [TranscriptLine] = []
 
+    /// For the title bar: how long the last deliberation took and how many
+    /// rounds it ran. Measured here rather than reported by the engine so the
+    /// wire format stays untouched.
+    @Published private(set) var startedAt: Date?
+    @Published private(set) var finishedAt: Date?
+    @Published private(set) var rounds: Int = 0
+
     struct TranscriptLine: Identifiable, Equatable {
         let id = UUID()
         let member: String
@@ -125,6 +132,9 @@ final class Council: ObservableObject {
             council.units[2].position = casper
             council.outcome = "majority"
             council.synthesis = "MAJORITY — NO  (1A · 0C · 2R)"
+            council.rounds = 2
+            council.startedAt = Date(timeIntervalSinceNow: -31.4)
+            council.finishedAt = Date()
             council.verdict = .reject
             council.transcript = [
                 TranscriptLine(member: "MELCHIOR", round: 1, text: melchior.reasoning,
@@ -201,6 +211,7 @@ final class Council: ObservableObject {
 
         reset(question: trimmed)
         phase = .warming
+        startedAt = Date()
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: engine)
@@ -261,6 +272,8 @@ final class Council: ObservableObject {
         verdict = nil
         transcript = []
         options = []
+        rounds = 0
+        finishedAt = nil
         for index in units.indices {
             units[index].position = nil
             units[index].reporting = false
@@ -286,9 +299,11 @@ final class Council: ObservableObject {
         case let .intake(mode, options):
             self.mode = mode
             self.options = options
+            rounds = max(rounds, 1)
             phase = .deliberating(round: 1)
 
         case let .round(number):
+            rounds = max(rounds, number)
             phase = .deliberating(round: number)
 
         case let .vote(member, position), let .revote(member, position):
@@ -307,6 +322,7 @@ final class Council: ObservableObject {
                 }
             }
             verdict = Self.decidedVerdict(synthesis: synthesis, positions: positions)
+            finishedAt = Date()
             phase = .resolved
 
         case let .failure(message):

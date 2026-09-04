@@ -1,27 +1,10 @@
 import SwiftUI
 
-/// A polygon in normalised coordinates, so the shapes hold their proportions
-/// at any window size.
-struct UnitShape: Shape {
-    let points: [CGPoint]
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        guard let first = points.first else { return path }
-        func place(_ p: CGPoint) -> CGPoint {
-            CGPoint(x: rect.minX + p.x * rect.width, y: rect.minY + p.y * rect.height)
-        }
-        path.move(to: place(first))
-        for point in points.dropFirst() { path.addLine(to: place(point)) }
-        path.closeSubpath()
-        return path
-    }
-}
-
-/// One unit: a solid block with black text on it, the way the display draws it.
+/// One seat in the sidebar: a filled block with black text on it.
 ///
-/// Green at rest, red when it refuses. Nothing translucent, no bloom on the
-/// fill, and the name is the largest thing on the block.
+/// Name and answer on the first line, the question that seat answers and the
+/// kanji plate on the second, and five bars for how strongly it holds the
+/// answer. Red when it says no, mint otherwise, dim mint while it thinks.
 struct UnitPanel: View {
     let unit: Council.Unit
 
@@ -31,68 +14,69 @@ struct UnitPanel: View {
             || position.recommendation != nil || position.failed
     }
 
-    private var fill: Color {
-        if unit.position?.failed == true { return Theme.unitReject }
-        guard decided else { return Theme.unitResting }
-        return unit.position?.verdictKey == .reject ? Theme.unitReject : Theme.unit
-    }
-
+    private var fill: Color { Theme.unitFill(for: unit.position) }
     private var state: (kanji: String, english: String) { Plain.unitState(unit.position) }
+    private var ink: Color { Theme.void }
 
     var body: some View {
-        GeometryReader { geometry in
-            let points = Seats.shapes[unit.id] ?? []
-            let anchor = Seats.labels[unit.id] ?? CGPoint(x: 0.5, y: 0.5)
-            let width = geometry.size.width
-            let allowed = (Seats.labelWidths[unit.id] ?? 0.32) * width
-
-            ZStack {
-                UnitShape(points: points).fill(fill)
-                UnitShape(points: points).stroke(Theme.orange, lineWidth: 2)
-
-                UnitShape(points: points)
-                    .fill(.white)
-                    .opacity(unit.reporting ? 0.55 : 0)
-                    .blendMode(.plusLighter)
-
-                VStack(spacing: 2) {
-                    Text("\(unit.name) · \(unit.number)")
-                        .font(Theme.display(width * 0.030))
-                        .tracking(0.5)
-                        .foregroundStyle(Theme.void)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.4)
-
-                    Text(Plain.role(unit.name))
-                        .font(Theme.mono(width * 0.0105))
-                        .tracking(1.1)
-                        .foregroundStyle(Theme.void.opacity(0.62))
-
-                    if decided {
-                        Text(state.english)
-                            .font(Theme.display(width * 0.040))
-                            .foregroundStyle(Theme.void)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.4)
-                            .padding(.top, 2)
-
-                        HStack(spacing: 6) {
-                            Text(state.kanji).font(Theme.plate(width * 0.016))
-                            if let conviction = unit.position?.confidence {
-                                Text(Plain.conviction(conviction))
-                                    .font(Theme.mono(width * 0.0098))
-                                    .tracking(1)
-                            }
-                        }
-                        .foregroundStyle(Theme.void.opacity(0.6))
-                    }
-                }
-                .frame(width: allowed)
-                .position(x: width * anchor.x, y: geometry.size.height * anchor.y)
-                .allowsHitTesting(false)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(unit.name)
+                    .font(Theme.display(22))
+                    .tracking(0.6)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text("·0\(unit.number)")
+                    .font(Theme.mono(10))
+                    .opacity(0.62)
+                Spacer(minLength: 6)
+                Text(decided ? state.english : "")
+                    .font(Theme.display(26))
+                    .tracking(1)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
             }
+
+            HStack(spacing: 8) {
+                Caption(text: Plain.role(unit.name), color: ink.opacity(0.7), size: 10, tracking: 1.2)
+                Spacer(minLength: 6)
+                Text(state.kanji)
+                    .font(Theme.plate(14))
+                    .tracking(2)
+                    .opacity(0.75)
+            }
+
+            ConvictionBars(level: decided ? (unit.position?.confidence ?? 0) : 0, ink: ink)
         }
+        .foregroundStyle(ink)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // The moment a seat reports, the block flashes once. The flash sits
+        // under the text, not over it, or the name greys out mid-flash.
+        .background(ZStack {
+            fill
+            Color.white.opacity(unit.reporting ? 0.35 : 0)
+        })
+        .shadow(color: fill.opacity(decided ? 0.16 : 0), radius: 11)
         .animation(.easeOut(duration: 0.4), value: decided)
         .animation(.easeOut(duration: 0.6), value: unit.reporting)
+    }
+}
+
+/// Five segments; the engine's confidence is 1 to 5 and nobody needs the number.
+struct ConvictionBars: View {
+    let level: Int
+    let ink: Color
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<5, id: \.self) { index in
+                Rectangle()
+                    .fill(index < level ? ink : ink.opacity(0.22))
+                    .frame(height: 4)
+                    .frame(maxWidth: .infinity)
+            }
+        }
     }
 }

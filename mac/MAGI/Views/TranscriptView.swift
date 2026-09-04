@@ -1,85 +1,77 @@
 import SwiftUI
 
-/// What each of the three actually said.
-///
-/// The display is the spectacle, but the reason to run this at all is three
-/// independent reads you can argue with, so the prose stays plain: no lens
-/// tags, no confidence scores, no verdict enum names. Just who said it, what
-/// they answered, and why.
+/// What each of the three actually said: a coloured rule down the left, the
+/// name, the angle and how sure they are, then the argument in plain prose.
+/// No lens tags, no confidence scores, no verdict enum names.
 struct TranscriptView: View {
     let lines: [Council.TranscriptLine]
+    let units: [Council.Unit]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ForEach(lines) { line in
-                TranscriptCard(line: line)
+                TranscriptCard(line: line, tag: Tally.tag(for: line, among: units))
             }
+        }
+    }
+}
+
+/// Who stood alone. Counted from the final positions, so the tag only appears
+/// once the split is known.
+enum Tally {
+    static func tag(for line: Council.TranscriptLine, among units: [Council.Unit]) -> String? {
+        let verdicts = units.compactMap { $0.position?.verdictKey }
+        guard verdicts.count >= 3, let mine = line.position.verdictKey else { return nil }
+        let same = verdicts.filter { $0 == mine }.count
+        guard same == 1 else { return nil }
+        switch mine {
+        case .accept: return "THE LONE YES"
+        case .reject: return "THE LONE NO"
+        case .conditional: return "THE ONLY ONE WITH A CONDITION"
         }
     }
 }
 
 struct TranscriptCard: View {
     let line: Council.TranscriptLine
+    var tag: String? = nil
 
     private var accent: Color { Theme.color(for: line.position.verdictKey) }
 
-    private var answer: String {
-        if line.position.failed { return "NO ANSWER" }
-        if let verdict = line.position.verdictKey { return Plain.verdictWord(verdict) }
-        if let option = line.position.option { return option.uppercased() }
-        if let recommendation = line.position.recommendation { return recommendation.uppercased() }
-        return ""
+    private var subtitle: String {
+        let conviction = Plain.conviction(line.position.confidence)
+        let role = Plain.lens(line.lens, member: line.member)
+        return conviction.isEmpty ? role : "\(role) · \(conviction)"
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Plate(text: line.member, color: accent, size: 12, tracking: 2.5)
-
-                Text(Plain.role(line.member))
-                    .font(Theme.mono(8.5))
-                    .tracking(1.6)
-                    .foregroundStyle(Theme.steel)
-
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(line.member)
+                    .font(Theme.display(17))
+                    .tracking(1.4)
+                    .foregroundStyle(Theme.bone)
+                Caption(text: subtitle, size: 10, tracking: 1.2)
                 if line.round > 1 {
-                    Text("ARGUING BACK")
-                        .font(Theme.mono(8.5))
-                        .tracking(1.6)
-                        .foregroundStyle(Theme.steel)
+                    Caption(text: "ARGUING BACK", size: 9.5, tracking: 1.4)
                 }
-
                 if line.position.changed {
-                    Text(Plain.changedMind)
-                        .font(Theme.mono(8.5))
-                        .tracking(1.6)
-                        .foregroundStyle(Theme.orange)
+                    Caption(text: Plain.changedMind, color: Theme.orange, size: 9.5, tracking: 1.4)
                 }
-
-                Spacer()
-
-                if !answer.isEmpty {
-                    Text(answer)
-                        .font(Theme.display(17))
-                        .tracking(2)
-                        .foregroundStyle(accent)
-                }
-                if let conviction = line.position.confidence {
-                    Text(Plain.conviction(conviction))
-                        .font(Theme.mono(8))
-                        .tracking(1.4)
-                        .foregroundStyle(Theme.steel)
+                if let tag {
+                    Caption(text: tag, color: accent, size: 9.5, tracking: 1.4)
                 }
             }
 
             Text(line.text)
-                .font(.system(size: 13.5))
-                .foregroundStyle(Theme.bone.opacity(0.93))
-                .lineSpacing(4)
+                .font(Theme.mono(13))
+                .foregroundStyle(Theme.prose)
+                .lineSpacing(5)
+                .frame(maxWidth: 660, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
 
             if !line.finding.isEmpty {
-                LabelledLine(label: Plain.lens(line.lens, member: line.member),
-                             text: line.finding, color: accent)
+                LabelledLine(label: "ONLY IT SAID THIS", text: line.finding, color: Theme.orange)
             }
 
             if let condition = line.position.condition, !condition.isEmpty,
@@ -87,12 +79,12 @@ struct TranscriptCard: View {
                 LabelledLine(label: Plain.onlyIf, text: condition, color: Theme.orange)
             }
         }
-        .padding(16)
-        .background(Color.white.opacity(0.022))
+        .padding(.vertical, 2)
+        .padding(.leading, 16)
         .overlay(alignment: .leading) {
-            Rectangle().fill(accent).frame(width: 2)
+            Rectangle().fill(accent).frame(width: 3)
         }
-        .overlay(Rectangle().stroke(accent.opacity(0.25), lineWidth: 1))
+        .frame(maxWidth: .infinity, alignment: .leading)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 }
@@ -103,15 +95,11 @@ private struct LabelledLine: View {
     let color: Color
 
     var body: some View {
-        HStack(alignment: .top, spacing: 9) {
-            Text(label)
-                .font(Theme.mono(8.5))
-                .tracking(1.4)
-                .foregroundStyle(color)
-                .frame(width: 96, alignment: .leading)
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Caption(text: label, color: color, size: 9.5, tracking: 1.4)
             Text(text)
-                .font(Theme.mono(11))
-                .foregroundStyle(Theme.bone.opacity(0.78))
+                .font(Theme.mono(12))
+                .foregroundStyle(Theme.steel)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }

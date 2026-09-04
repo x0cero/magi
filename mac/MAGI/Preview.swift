@@ -13,6 +13,9 @@ import SwiftUI
 /// which is the case where the colours have to work hardest.
 enum Preview {
 
+    /// True only in the offline render path.
+    static var rendering = false
+
     @MainActor
     static func runIfRequested() -> Bool {
         let args = CommandLine.arguments
@@ -23,6 +26,7 @@ enum Preview {
         let width = Double(value(of: "--width", in: args) ?? "1180") ?? 1180
         let height = Double(value(of: "--height", in: args) ?? "900") ?? 900
 
+        rendering = true
         let council = Council.preview(state)
         let view = ContentView(previewCouncil: council)
             .frame(width: width, height: height)
