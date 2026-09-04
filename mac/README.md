@@ -1,7 +1,11 @@
 # MAGI.app
 
-The console as a real Mac app: the three units in the triangle, glowing, with
-the verdict taking the whole screen when the council lands.
+The council as a Mac app. Three seats down the left, the verdict and each
+member's argument on the right, an argue-back line at the bottom, and every
+past conversation in HISTORY to reopen and continue. The verdict takes the
+whole screen for a moment when the council lands.
+
+![the app after a split decision](screenshots/answered.png)
 
 ## Build
 
@@ -19,9 +23,15 @@ The app contains **no council logic**. It spawns the Python engine and reads
 newline-delimited JSON from it:
 
 ```bash
-magi stream "should i deploy on friday"   # one event per line
+magi stream "should i deploy on friday"   # one question, one event per line
+magi stream                                # a session: one line per turn on stdin
 magi roster                                # who is seated, for the idle display
 ```
+
+The app keeps one `magi stream` session open per conversation. A follow-up is
+written to its stdin and the engine treats it as evidence for the running
+thread. `/new` on stdin drops the thread; `/resume <thread>` rebuilds a past
+one from the journal, which is how HISTORY reopens a conversation.
 
 That split is deliberate. The personas, the validators, the grounding rules and
 the tie-breaking are 1,400 lines of Python that the eval harness measures. A
@@ -37,6 +47,15 @@ asserted on both sides; bumping it is a deliberate, matched change.
 In order: a pinned `enginePath` default, `~/.local/bin/magi` (pipx), the repo's
 own `.venv`, then Homebrew. So a dev checkout and a normal install both work
 with nothing to configure.
+
+## Screenshots without taking over the screen
+
+```bash
+MAGI.app/Contents/MacOS/MAGI --render shot.png --state answered   # idle | thinking | answered
+```
+
+Set `MAGI_JOURNAL_PATH` to a stand-in journal so the HISTORY column does not
+show your own decisions.
 
 ## Settings
 

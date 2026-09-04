@@ -13,7 +13,7 @@ struct ContentView: View {
     @StateObject private var audio = Audio()
     @State private var draft = ""
     @State private var stampShowing = false
-    @State private var journal: [Journal.Entry] = []
+    @State private var journal: [Journal.Entry] = Preview.rendering ? Journal.load() : []
     @FocusState private var inputFocused: Bool
 
     /// How long the full-screen answer holds before it clears. Adjustable
@@ -244,18 +244,24 @@ private struct Sidebar: View {
                     .padding(.horizontal, 18)
                 Spacer(minLength: 0)
             } else {
-                ScrollView {
-                    VStack(spacing: 6) {
-                        ForEach(threads) { thread in
-                            ThreadRow(thread: thread, current: thread.id == council.thread)
-                                .contentShape(Rectangle())
-                                .onTapGesture { council.resume(thread) }
-                        }
+                let rows = VStack(spacing: 6) {
+                    ForEach(Preview.rendering ? Array(threads.prefix(6)) : threads) { thread in
+                        ThreadRow(thread: thread, current: thread.id == council.thread)
+                            .contentShape(Rectangle())
+                            .onTapGesture { council.resume(thread) }
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 12)
                 }
-                .disabled(council.isRunning)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 12)
+
+                if Preview.rendering {
+                    // The offline renderer draws nothing inside a ScrollView.
+                    rows
+                    Spacer(minLength: 0)
+                } else {
+                    ScrollView { rows }
+                        .disabled(council.isRunning)
+                }
             }
 
             Caption(text: "+ INVITE A SPECIALIST", size: 10, tracking: 1.6)
@@ -285,11 +291,13 @@ private struct ThreadRow: View {
         let last = thread.last
         let upper = last.synthesis.uppercased()
         var said = "they answered"
-        if upper.contains("ONLY IF") { said = "they said only if" }
+        if last.outcome == "picks" || last.outcome == "choice" || last.mode == "choice" || last.mode == "open" {
+            said = "they picked"
+        } else if upper.contains("ONLY IF") { said = "they said only if" }
         else if upper.hasPrefix("CONSENSUS") || upper.hasPrefix("MAJORITY") || upper.hasPrefix("CALL") {
             if upper.contains("NO") { said = "they said no" }
             else if upper.contains("YES") { said = "they said yes" }
-        } else if last.outcome == "picks" || last.outcome == "choice" { said = "they picked" }
+        }
         if let outcome = last.userOutcome, !outcome.isEmpty { said += " · \(outcome)" }
         let turns = thread.turns.count
         return turns > 1 ? "\(said) · \(turns) turns" : said
@@ -496,13 +504,22 @@ private struct InputBar: View {
                 .font(Theme.display(16))
                 .foregroundStyle(Theme.orange)
 
-            TextField("", text: $draft, prompt: Text(placeholder).foregroundStyle(Theme.placeholder))
-                .textFieldStyle(.plain)
-                .font(Theme.mono(13))
-                .foregroundStyle(Theme.bone)
-                .focused($focused)
-                .onSubmit(submit)
-                .disabled(council.isRunning)
+            if Preview.rendering {
+                // ImageRenderer draws the AppKit field with the system accent
+                // colour; a plain label stands in for it in screenshots.
+                Text(placeholder)
+                    .font(Theme.mono(13))
+                    .foregroundStyle(Theme.placeholder)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                TextField("", text: $draft, prompt: Text(placeholder).foregroundStyle(Theme.placeholder))
+                    .textFieldStyle(.plain)
+                    .font(Theme.mono(13))
+                    .foregroundStyle(Theme.bone)
+                    .focused($focused)
+                    .onSubmit(submit)
+                    .disabled(council.isRunning)
+            }
 
             if council.isRunning {
                 Button(Plain.stopButton, action: council.cancel)

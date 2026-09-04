@@ -4,277 +4,93 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-A council that decides. Three models, three fixed lenses, one verdict you can argue with.
+A council that decides for people who can't. Three local models, three fixed lenses, one verdict you can argue with.
 
-Named for the Nerv supercomputer in *Neon Genesis Evangelion*: three perspectives, one verdict. Built for indecisive people who want a council, not another chatbot.
+![MAGI on the Mac: three seats on the left, the verdict and each member's argument on the right, past conversations below](mac/screenshots/answered.png)
 
-MAGI is not a "which model gives the best answer" tool. There are plenty of those now. It is a decision instrument: the same three lenses every time, a verdict it will not take back, and a journal of what you actually did afterward.
+## What it is
 
-```
-    ███╗   ███╗ █████╗  ██████╗ ██╗
-    ████╗ ████║██╔══██╗██╔════╝ ██║
-    ██╔████╔██║███████║██║  ███╗██║
-    ██║╚██╔╝██║██╔══██║██║   ██║██║
-    ██║ ╚═╝ ██║██║  ██║╚██████╔╝██║
-    ╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝
+You type the thing you can't decide. It does not have to be a question. "i keep putting off calling the dentist" works. Three members read it, each through a lens the others are not allowed to use, and vote:
 
-    MELCHIOR  ·  BALTHASAR  ·  CASPER
-    the council convenes — bring your question
-```
+- **MELCHIOR** asks whether it will actually work. Mechanism, numbers, second-order effects.
+- **BALTHASAR** asks what it costs you. Reversibility, relationships, what gets sacrificed quietly.
+- **CASPER** asks what you actually want. The one voice willing to say go.
 
-## What it does
+They argue for a round or two, then land. Majority rules, a tie goes to whoever held their line harder, and a dead-even tie goes to CASPER, because when the arguments balance exactly, what you want is the deciding fact. There is no outcome that hands the question back to you.
 
-You bring a question. Three models, each running a distinct lens, debate it across multiple rounds and return a verdict:
+Then you argue back. "i have a tested rollback and the whole team is on call" is new evidence for the running thread, not a new question, and the council re-votes on it. Every conversation is kept, so you can reopen one later and keep going.
 
-- **MELCHIOR** (`qwen3:4b`) — data, logic, second-order effects. Owns the numbers, the runway, the mechanism. Watches for confirmation bias, sunk cost, planning fallacy.
-- **BALTHASAR** (`dolphin3:8b`) — long-term wellbeing, relationships, what gets sacrificed quietly. Owns reversibility and who gets hurt. Never argues from money.
-- **CASPER** (`hermes3:8b`) — desire, values, identity. Owns what you actually want under the framing. The one voice in the room willing to say go.
-
-Each member must produce one **finding only its lens can produce** — a mechanism, a cost, a want — and each is told which arguments belong to the others so it cannot borrow them. A member is sent back to answer again if it restates somebody else's point, argues from a lens it does not own, or **asserts a fact your question never gave it**.
-
-That last one is the failure that matters most. Asked "should i push a database migration to prod at 5pm on friday" with no other detail, an earlier build voted YES because one member decided you had "a 24-hour rollback window with pre-migration testing in staging". You never said that. Naming a missing fact is the job; assuming one is not.
-
-Every member also reports **conviction**, 1 to 5. Conviction is what breaks a tie.
-
-### It always lands on an answer
-
-| result | what happened |
-|---|---|
-| `CONSENSUS — NO` | all three agreed |
-| `MAJORITY — YES` | 2-1. Still a decision. |
-| `CALL — YES · decided on conviction` | tied on headcount, one side held it harder |
-| `CALL — YES · CASPER breaks the tie` | dead even on both. When the arguments balance exactly, what you want is the deciding fact. |
-
-There is no outcome that hands the question back. Earlier versions reported any disagreement as `DEADLOCK — your call`, which meant 40% of deliberations ended in the council refusing to vote. That was the bug, not the feature.
-
-CONDITIONAL verdicts still require a concrete blocker tied to your actual situation; vague hedges are coerced to ACCEPT.
-
-## The Mac app
-
-The terminal can only put characters on a grid, and the display this copies is
-mostly glow, curvature and motion. So there is a real app:
-
-```bash
-./mac/build.sh      # needs xcodegen; installs to /Applications
-```
-
-Three units in the triangle, lit and wired to a bus, and the verdict takes the
-whole screen when the council lands. The app runs the same council: it spawns
-`magi stream` and reads newline-delimited JSON, so there is one implementation
-of the personas and the eval harness still measures what the app runs. See
-[mac/README.md](mac/README.md).
-
-The terminal console below is still there and still the fastest way to ask
-something.
-
-## The display
-
-The console is a copy of the MAGI display from the show, not an homage to it.
-Three units in the triangle, wired to a shared bus, each one showing a kanji
-plate rather than a word: 審 議 中 while it is thinking, then 可 決, 否 決 or
-条 件 付. The decision lands as a filled orange plate with the verdict punched
-out of it in black.
-
-The tones are synthesised from arithmetic the first time you run it and cached
-in `~/.config/magi/sounds/`. Nothing is sampled from the show, because that
-audio belongs to Khara and this is a public repo. A unit reporting in clicks, a
-unanimous council resolves upward, a tiebreak does not resolve at all.
-
-```bash
-MAGI_SOUND=0 magi           # silence
-MAGI_THEME=classic magi     # the older muted panels
-```
-
-Both are read fresh on every call, so you can flip them between questions. The
-classic theme is also the fallback worth using on a terminal that cannot draw
-kanji, since the frame is built on the assumption that they occupy two cells.
+Named for the three supercomputers in *Neon Genesis Evangelion*. The personas do not cosplay the show.
 
 ## Install
-
-One command. Handles Python, Ollama, models, everything:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/x0cero/magi/main/install.sh | bash
 ```
 
-Or if you prefer doing it yourself:
+That handles Python, Ollama and the three models (about 12GB). By hand:
 
 ```bash
 pipx install magi-council
 ollama pull qwen3:4b && ollama pull dolphin3:8b && ollama pull hermes3:8b
+magi doctor
 ```
 
-The package is `magi-council` because plain `magi` was already taken on PyPI by
-an unrelated project. The command you type is still `magi`. To install straight
-from source instead: `pipx install git+https://github.com/x0cero/magi`.
+The package is `magi-council` because `magi` was taken on PyPI. The command is still `magi`.
 
-Total model footprint: ~12GB, and a warm council answers in seconds. Verify with `magi doctor`.
-
-The seats are deliberately small. Three members run at once against one GPU, so they contend rather than parallelise and the round costs what the slowest seat costs. Measured on an M1 Max: this council answers a round in about 6 seconds, where a 14B-class council took 87. If you have the hardware and want bigger seats, `magi --melchior qwen3:14b` or the config file.
-
-## No spare RAM? Bring a key
-
-Local Ollama is the default identity: your council, your hardware, no API bills. But any council seat can run on a cloud provider instead — prefix the model with the provider name and bring your own key:
+### The Mac app
 
 ```bash
-export GROQ_API_KEY=gsk_...     # free tier at console.groq.com
-magi --casper "groq/llama-3.3-70b-versatile" "should I move?"
+./mac/build.sh      # needs xcodegen (brew install xcodegen); installs to /Applications
 ```
 
-Supported prefixes:
-
-| Prefix | Provider | Key env var | Free tier |
-|---|---|---|---|
-| *(none)* | local Ollama | — | free forever |
-| `ollama-cloud/` | [Ollama Cloud](https://ollama.com) | `OLLAMA_API_KEY` | yes |
-| `groq/` | [Groq](https://console.groq.com) | `GROQ_API_KEY` | yes |
-| `openrouter/` | [OpenRouter](https://openrouter.ai) | `OPENROUTER_API_KEY` | free models |
-| `gemini/` | [Google Gemini](https://aistudio.google.com) | `GEMINI_API_KEY` | yes |
-| `anthropic/` | [Anthropic](https://console.anthropic.com) | `ANTHROPIC_API_KEY` | no |
-| `openai/` | [OpenAI](https://platform.openai.com) | `OPENAI_API_KEY` | no |
-
-Mix and match — a frontier model debating two locals is a legitimately fun council:
-
-```bash
-magi --melchior "anthropic/claude-opus-4-8" "should I quit my job?"
-```
-
-Make it permanent in `~/.config/magi/config.toml`:
-
-```toml
-[models]
-casper = "groq/llama-3.3-70b-versatile"
-
-[providers.groq]
-api_key = "gsk_..."   # or just export GROQ_API_KEY
-```
-
-Bonus: if your local Ollama is signed in to ollama.com, `-cloud` models (`glm-5.2:cloud`, `deepseek-v4-pro:cloud`) work as bare names with zero setup. `magi doctor` checks whichever providers your config actually uses.
+The app owns no council logic. It runs `magi stream` and draws what comes back, so there is one implementation of the council and the eval harness measures the same code the app runs. See [mac/README.md](mac/README.md).
 
 ## Use
 
 ```bash
-magi                                    # open the REPL
+magi                                    # the terminal REPL
 magi "should I take the job offer?"     # one-shot
-magi doctor                             # check Ollama + models
-magi stats                              # decision patterns
-magi --invite banker "should I move?"   # invite a specialist
+magi -q "swift or flutter?"             # verdict line only, for scripts
+magi --invite banker "should I move?"   # add a specialist to the council
 ```
 
-Inside the REPL:
+In the REPL, a second line argues back. `/new` starts a fresh thread, `/journal` lists past ones, `/outcome <id> <what you did>` records what you actually did, and `/help` has the rest.
 
-```
-❯  bring a question
-❯❯ argue back — the council reconsiders with new info
-/new       drop the thread, start fresh
-/help      list commands
-```
+Three shapes of input are routed automatically: a yes/no decision, a choice between named options ("civic or corolla"), and an open ask for direction ("what should i build next"). Statements are read as the decision hiding inside them.
 
-## How it routes your question
+## Why it works the way it does
 
-A lightweight intake classifier routes each question into one of three flows:
+**It always decides.** Earlier versions reported any disagreement as "deadlock, your call", and 40% of deliberations ended that way. That was the bug. Refusing to vote is the worst thing a decision tool can do.
 
-### `decision` — yes/no
+**Each lens is fenced.** Three models given the same question tend to produce one argument three times. Each member must produce a finding only its lens can produce, is told which arguments belong to the others, and is sent back if it repeats somebody else's point.
 
-Real output, three lenses landing in three different places:
+**It is not allowed to invent your situation.** Asked "should i push a database migration to prod at 5pm on friday", an earlier build voted yes because one member decided you had "a 24-hour rollback window with pre-migration testing in staging". You never said that. A member that asserts a fact your input never gave is sent back to answer from what you actually said.
 
-```
-❯ i got offered a job that pays 40k more but its at a company whose
-  product i think is harmful and the commute is 90 minutes. should i take it
+**Small models on purpose.** Three seats share one GPU, so a round costs what the slowest seat costs. The default trio answers a round in about six seconds; a 14B trio took 87. Stronger models were measured and made fabrication worse, not better. If you have the hardware anyway, `magi --melchior qwen3:14b` or the config file.
 
-MELCHIOR    CONDITIONAL  ●●●○○
-            The 90-minute commute is a secondary constraint that reduces
-            the net benefit unless it can be offset.
-            MECHANISM: whether they can avoid the harmful product without trade-offs
+## Bring a key instead
 
-BALTHASAR   REJECT       ●●●○○
-            A salary increase is outweighed by the long-term impact on
-            wellbeing, and a long daily commute leads to burnout.
-            COST: the irreversible sacrifice of personal values for financial gain
-
-CASPER      ACCEPT       ●●●○○
-            You are being asked to enable something you believe is wrong.
-            WANT: permission to do something that goes against your values
-
-RESULT: CALL — YES  (1A · 1C · 1R)  ·  dead even, CASPER breaks the tie
-```
-
-Three-way split, so it went to conviction, then to the desire lens. Thirty-one seconds.
-
-### `choice` — pick from named options
-```
-❯ should i write my new ios app in swift or react native
-intake: choice question — Swift vs React Native
-... [picks per persona, tally]
-RESULT: CONSENSUS — Swift  (Swift:3)
-```
-
-### `open` — open-ended request for direction
-```
-❯ i wanna play minecraft but ive been bored of a lot of games
-intake: open question
-MELCHIOR    RECOMMENDS: Disco Elysium
-BALTHASAR   RECOMMENDS: Stardew Valley
-CASPER      RECOMMENDS: Stardew Valley
-RESULT: PARTIAL OVERLAP — 2/3 agree on one pick  →  your call between 2 options
-```
-
-`prediction` questions ("will my startup hit profitability?") are interpreted as decisions: *should they bet on X happening.*
-
-## Specialists
-
-The core MAGI is fixed at three. For higher-stakes questions, invite a specialist:
-
-```
-/invite banker      financial reality — cash flow, runway, opportunity cost
-/invite therapist   emotional + psychological — what's underneath
-/invite lawyer      legal exposure — contracts, liability, downside
-/invite coach       career trajectory — what compounds, what's a dead-end
-/invite doctor      physical health — body signals, lifestyle impact
-```
-
-Specialists join the council and debate alongside the core three. `/dismiss <name>` to remove. They can be invited mid-thread.
-
-## Journal & Stats
-
-Every deliberation auto-saves to `~/.config/magi/journal.jsonl`:
-
-```
-/journal                       show recent deliberations
-/stats                         decision patterns and analytics
-/outcome <id> <what you did>   record what you actually decided
-```
-
-## Memory
-
-MAGI learns from your past decisions. Before each deliberation, it searches your journal for similar questions. If it finds a match, the council sees what happened last time:
-
-```
-╭──────────────── you've asked this before ─────────────────╮
-│  ● 2026-05-02  "should I take the job offer?"  → YES     │
-│    ↳ you said: "took it, no regrets"                      │
-╰───────────────────────────────────────────────────────────╯
-```
-
-After each result, it surfaces patterns: whether you're revisiting a question, which member you tend to follow, and nudges you to record outcomes so the council gets smarter over time. Use `/outcome <id> <what you did>` to close the loop.
-
-## Quiet mode
-
-For scripting, `-q` suppresses all panels and outputs only the verdict line:
+Any seat can run on a cloud provider. Prefix the model with the provider name and export the key:
 
 ```bash
-magi -q "should I deploy on Friday?"
-# CONSENSUS — YES  (3A · 0C · 0R)
-
-echo "swift or flutter?" | magi -q
-# CONSENSUS — Swift  (Swift:3)
+export GROQ_API_KEY=gsk_...
+magi --casper "groq/llama-3.3-70b-versatile" "should I move?"
 ```
 
-Works with pipes too: `echo "should I?" | magi -q`
+| Prefix | Provider | Key | Free tier |
+|---|---|---|---|
+| *(none)* | local Ollama | none | yes |
+| `ollama-cloud/` | Ollama Cloud | `OLLAMA_API_KEY` | yes |
+| `groq/` | Groq | `GROQ_API_KEY` | yes |
+| `openrouter/` | OpenRouter | `OPENROUTER_API_KEY` | free models |
+| `gemini/` | Google Gemini | `GEMINI_API_KEY` | yes |
+| `anthropic/` | Anthropic | `ANTHROPIC_API_KEY` | no |
+| `openai/` | OpenAI | `OPENAI_API_KEY` | no |
 
-## Config file
+If your local Ollama is signed in to ollama.com, `:cloud` tags work as bare names with no setup.
 
-Persistent model overrides and auto-invite specialists:
+## Config
 
 ```bash
 magi --init-config    # writes ~/.config/magi/config.toml with examples
@@ -282,50 +98,30 @@ magi --init-config    # writes ~/.config/magi/config.toml with examples
 
 ```toml
 [models]
-melchior = "qwen3:8b"
+casper = "groq/llama-3.3-70b-versatile"
 
 [specialists]
 invite = ["banker"]
+
+[providers.groq]
+api_key = "gsk_..."
 ```
 
-CLI flags always override the config file.
+Environment variables, all read fresh on every call:
 
-## Customize
+| Variable | What it does |
+|---|---|
+| `MAGI_SOUND=0` | silence the console tones |
+| `MAGI_SEED=1` | pin the sampler so two runs are comparable |
+| `MAGI_NUM_CTX=16384` | context window (default 8192, keeps models from reserving gigabytes of cache) |
+| `MAGI_CLASSIFIER_MODEL` | the small model that routes your input |
+| `OLLAMA_HOST` | a non-local Ollama |
 
-Per-persona model overrides:
-
-```bash
-magi --melchior qwen3:8b --balthasar hermes3:8b "..."
-```
-
-Or in the REPL:
-
-```
-/melchior qwen3:8b
-/balthasar llama3.1:8b
-```
-
-Override the intake classifier model:
-
-```bash
-MAGI_CLASSIFIER_MODEL=llama3.2:1b magi
-```
-
-Point at a non-local Ollama:
-
-```bash
-OLLAMA_HOST=http://192.168.1.100:11434 magi
-```
-
-Raise the context window if you feed the council very long questions (the default keeps models from reserving a KV cache sized to their advertised 128k window, which costs gigabytes for nothing):
-
-```bash
-MAGI_NUM_CTX=16384 magi
-```
+Everything lands in `~/.config/magi/`: the journal, the config, the cached tones.
 
 ## Is it any good? Run the evals
 
-MAGI ships with its own evaluation harness, because twelve versions of prompt tuning by vibes is how you fix the same bug twice. It runs a fixed suite of questions through the real pipeline and scores the things that make a council good or useless.
+Twelve versions were tuned by feel, which is how the same bug got fixed twice. Now a fixed suite runs through the real pipeline and scores it mechanically, no LLM judge:
 
 ```bash
 python -m evals run --seed 1 --out evals/runs/mine.json
@@ -334,72 +130,16 @@ python -m evals band evals/runs/seed1.json evals/runs/seed2.json evals/runs/seed
 python -m evals compare evals/runs/before.json evals/runs/mine.json
 ```
 
-**Seed your runs, and measure the spread before you believe a delta.** Without
-`--seed`, one run is a single sample of a wide distribution: three runs of
-identical code here returned 12, 13 and 17 fabricated premises, and read as a
-before-and-after that looks like a regression. `band` scores several repeats
-together and prints the smallest change worth believing. `compare` warns you
-when it is comparing dice as well as code.
+It measures fabricated premises, lens overlap, decisive rate, vagueness, routing accuracy and latency. Seed your runs and measure the band before believing a delta: identical code has returned 12, 13 and 17 fabricated premises on three unseeded runs. Never compare numbers across machines; the same code scores differently on different Ollama builds.
 
-What it measures:
-
-- **fabricated premises** — specifics a member asserted about your situation that your question never contained, separated from the same specifics named as *missing*, which is healthy.
-- **lens overlap** — how much the three members repeated each other. This is the metric that matters most. Three models producing one argument is the failure mode of every multi-model council, and the [research on multi-agent debate](https://arxiv.org/pdf/2606.03032) calls it stance homogenization.
-- **decisive rate** — how often the council named an answer instead of handing the question back.
-- **vagueness, identity leaks, interrogations** — the prose failures the persona prompts exist to prevent.
-- **mode accuracy** — whether the intake classifier routed the question correctly.
-- **latency** — per question, so a quality change that costs a minute is visible.
-
-Nothing in the harness uses an LLM judge. Every metric is mechanical, so two runs are comparable.
-
-The same 22 questions, v0.12 against v0.13 on the same machine:
-
-| | v0.12 | v0.13 |
-|---|---|---|
-| routed to the right mode | 41% | 95% |
-| landed on an answer | 36% | 100% |
-| lens overlap (lower is better) | 0.098 | 0.056 |
-| vague phrases | 4 | 1 |
-| seconds per question | 171 | 24 |
-| whole suite | 63 min | 9 min |
-
-And 0.13.0 against 0.13.1, on the fabrication problem the earlier scorecard could not see:
-
-| | 0.13.0 | 0.13.1 |
-|---|---|---|
-| answers resting on an invented fact | 6 | 2 |
-| questions with any fabrication | 45% | 30% |
-
-Both of those tables predate seeded runs, so read them as directional. Every
-number after 0.13.2 comes from a seeded repeat with its band reported.
-
-`evals/runs/baseline-v0.12.json` is committed so you can reproduce the comparison.
-
-## Reproducible runs
-
-Set `MAGI_SEED` to pin the sampler when you need two runs to be comparable:
-
-```bash
-MAGI_SEED=1 magi "should i take the contract"
-```
-
-Leave it unset for normal use. Varied answers across askings are the point: the
-council reading a question differently on a second pass is information about
-how close the call is. Cloud providers treat the seed as a hint rather than a
-guarantee, so a BYOK council is never as reproducible as a local one.
+`evals/runs/baseline-v0.12.json` is committed as the reference point. Full history in [CHANGELOG.md](CHANGELOG.md).
 
 ## Caveats
 
-- **Math is hallucinated.** Small models confidently get arithmetic wrong. For prediction questions involving numbers (runway, breakeven, growth rates), trust the directional verdict, not the specific figures.
-- **The council DECIDES.** It will not refuse to vote, even on questions where it lacks information. That's a feature: refusing to decide is the worst outcome. The corollary is that vague questions get vague-but-decisive answers.
-- **A tiebreak is not a coin flip, but it is close.** When you see `CALL — ... breaks the tie`, the council genuinely split. The answer stands, but that is the one to argue with.
-- **Three is canon.** Don't try to add a fourth core member. Route through specialists instead.
-
-## Why
-
-Coin-flip 2.0. The value is the experience: three independent reads, watching them debate each other by name, surfacing your real preference by friction. It scales from "should I have coffee at 8pm" to "should I quit my job": invite specialists for the heavy ones.
-
-Built explicitly for people who can't decide on their own. The council won't let you wallow.
+- Small models get arithmetic wrong. Trust the direction, not the figures.
+- A tiebreak is close to a coin flip. When you see `CALL`, that is the answer to argue with.
+- The fabrication detector is lexicon-based. Inventions in a domain it does not know still get through.
+- Three is canon. Add perspectives through specialists, not a fourth seat.
 
 ## Contributing
 

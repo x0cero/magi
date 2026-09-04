@@ -32,7 +32,12 @@ enum Journal {
     }
 
     static var path: String {
-        FileManager.default.homeDirectoryForCurrentUser.path + "/.config/magi/journal.jsonl"
+        // Overridable so screenshots can be taken against a stand-in journal
+        // rather than the owner's actual decisions.
+        if let override = ProcessInfo.processInfo.environment["MAGI_JOURNAL_PATH"], !override.isEmpty {
+            return override
+        }
+        return FileManager.default.homeDirectoryForCurrentUser.path + "/.config/magi/journal.jsonl"
     }
 
     private static let iso: ISO8601DateFormatter = {
@@ -106,8 +111,8 @@ enum Journal {
             if grouped[entry.thread] == nil { order.append(entry.thread) }
             grouped[entry.thread, default: []].append(entry)
         }
-        return order.reversed().map { id in
-            Thread(id: id, turns: grouped[id]!.sorted { $0.turn < $1.turn })
-        }
+        return order
+            .map { id in Thread(id: id, turns: grouped[id]!.sorted { $0.turn < $1.turn }) }
+            .sorted { $0.last.date > $1.last.date }
     }
 }
