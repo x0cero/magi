@@ -61,6 +61,7 @@ async def run_question(q: dict, models: dict[str, str]) -> dict:
 
         deliberation = Deliberation(list(models.keys()))
         deliberation.add_user_message(q["text"])
+        deliberation.frame(classification.decision)
 
         is_choice = (
             classification.question_class == QuestionClass.CHOICE

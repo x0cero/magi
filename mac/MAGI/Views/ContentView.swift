@@ -343,9 +343,11 @@ private struct MainColumn: View {
     }
 
     private var askedLine: String {
-        council.question.isEmpty
-            ? Plain.emptyState(council.phase)
-            : "YOU ASKED — \(council.question.uppercased())"
+        if council.question.isEmpty { return Plain.emptyState(council.phase) }
+        if !council.decision.isEmpty {
+            return "YOU SAID — \(council.question.uppercased())   ·   ON THE TABLE: \(council.decision.uppercased())?"
+        }
+        return "YOU ASKED — \(council.question.uppercased())"
     }
 }
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.16.0: statements reach the council
+
+People who cannot decide do not arrive with "should I X?". They arrive with
+"i keep putting off calling the dentist", and intake was bouncing that as
+noise. Statements are now decisions: intake names the yes/no action hiding
+in them ("should i call the dentist"), in the user's own words only (a figure
+they never gave drops the framing), and the council votes on it. Noise is
+honoured only for greetings, acknowledgements and inputs of two words or
+fewer, whatever the classifier says. The Mac app shows the statement and the
+decision on the table side by side.
+
 ## 0.15.0: a real app
 
 The terminal console was as far as characters on a grid go. What makes the

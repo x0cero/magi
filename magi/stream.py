@@ -10,7 +10,7 @@ The contract, one JSON object per line on stdout, flushed as it happens:
 
     {"event": "council",  "models": {NAME: model_id}, "version": "0.14.0"}
     {"event": "warming",  "member": NAME, "state": "loading"|"ready"|"failed"}
-    {"event": "intake",   "mode": "decision"|"choice"|"open"|"noise",
+    {"event": "intake",   "mode": "decision"|"choice"|"open"|"noise", "decision": str,
                           "options": [str]}
     {"event": "round",    "round": int}
     {"event": "vote",     "member": NAME, "round": 1, ...position}
@@ -121,7 +121,8 @@ async def stream_question(question: str, models: dict[str, str], warm: bool = Tr
 
     mode = classification.question_class.value
     options = list(classification.options)
-    emit("intake", mode=mode, options=options)
+    emit("intake", mode=mode, options=options, decision=classification.decision)
+    deliberation.frame(classification.decision)
 
     if classification.question_class == QuestionClass.NOISE:
         emit("verdict", outcome="noise", synthesis="NOISE: not a question", positions={})

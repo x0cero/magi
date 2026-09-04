@@ -74,7 +74,7 @@ struct Position: Codable, Equatable {
 enum MagiEvent {
     case council(models: [String: String], version: String, protocolVersion: Int)
     case warming(member: String, state: String)
-    case intake(mode: String, options: [String])
+    case intake(mode: String, options: [String], decision: String)
     case round(Int)
     case vote(member: String, position: Position)
     case revote(member: String, position: Position)
@@ -109,7 +109,8 @@ enum EventDecoder {
         case "intake":
             return .intake(
                 mode: object["mode"] as? String ?? "decision",
-                options: object["options"] as? [String] ?? []
+                options: object["options"] as? [String] ?? [],
+                decision: object["decision"] as? String ?? ""
             )
         case "round":
             return .round(object["round"] as? Int ?? 1)

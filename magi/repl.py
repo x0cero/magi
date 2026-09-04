@@ -304,7 +304,9 @@ async def run_full_deliberation(
 
         deliberation.mode = classification.question_class.value
         deliberation.options = list(classification.options)
-        render_intake(classification.question_class.value, classification.options, console)
+        deliberation.frame(classification.decision)
+        render_intake(classification.question_class.value, classification.options, console,
+                      decision=classification.decision)
 
     hits = search(question)
     if hits:

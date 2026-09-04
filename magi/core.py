@@ -354,6 +354,20 @@ class Deliberation:
         for name in self.histories:
             self.histories[name].append({"role": "user", "content": content})
 
+    def frame(self, decision: str) -> None:
+        """Tell the members what decision a statement implies.
+
+        Appended to the user's own message so it is part of the record the
+        grounding detector reads; the framing is restricted at intake to the
+        user's own words, so it adds no premises.
+        """
+        if not decision:
+            return
+        note = f"\n\n(They said this rather than asking. The decision on the table: {decision}?)"
+        for hist in self.histories.values():
+            if hist and hist[-1]["role"] == "user":
+                hist[-1]["content"] = hist[-1]["content"].rstrip("?") + note
+
     def commit_response(self, name: str, response: PersonaResponse) -> None:
         self.histories[name].append({"role": "assistant", "content": response.model_dump_json()})
 

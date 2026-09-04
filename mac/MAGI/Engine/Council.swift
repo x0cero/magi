@@ -40,6 +40,9 @@ final class Council: ObservableObject {
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var mode: String = "decision"
     @Published private(set) var options: [String] = []
+    /// When the user typed a statement, the yes/no decision the engine read
+    /// in it. Empty when they asked a question outright.
+    @Published private(set) var decision: String = ""
     @Published private(set) var question: String = ""
     @Published private(set) var synthesis: String = ""
     @Published private(set) var outcome: String = ""
@@ -272,6 +275,7 @@ final class Council: ObservableObject {
         verdict = nil
         transcript = []
         options = []
+        decision = ""
         rounds = 0
         finishedAt = nil
         for index in units.indices {
@@ -296,9 +300,10 @@ final class Council: ObservableObject {
                 units[index].ready = (state == "ready")
             }
 
-        case let .intake(mode, options):
+        case let .intake(mode, options, decision):
             self.mode = mode
             self.options = options
+            self.decision = decision
             rounds = max(rounds, 1)
             phase = .deliberating(round: 1)
 

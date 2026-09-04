@@ -492,9 +492,12 @@ def render_choice_debate_round(
         console.print(_choice_debate_panel(name, prev, rebuttal, round_num))
 
 
-def render_intake(question_class: str, options: list[str], console: Console) -> None:
+def render_intake(question_class: str, options: list[str], console: Console,
+                  decision: str = "") -> None:
     if question_class == "choice" and options:
         label = " vs ".join(options)
+    elif decision:
+        label = f"{question_class} · {decision}?"
     else:
         label = question_class
     t = Text("  ")
