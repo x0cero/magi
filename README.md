@@ -3,6 +3,7 @@
 [![CI](https://github.com/x0cero/magi/actions/workflows/ci.yml/badge.svg)](https://github.com/x0cero/magi/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/KMWnFJ5tre)
 
 A council that decides for people who can't. Three local models, three fixed lenses, one verdict you can argue with.
 
